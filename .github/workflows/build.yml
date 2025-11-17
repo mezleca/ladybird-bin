@@ -1,0 +1,155 @@
+name: build ladybird
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      no_cache:
+        type: boolean
+        default: false
+        description: disable cache
+
+env:
+  BUILD_TYPE: Release
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
+  VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        fetch-depth: 1
+
+    - name: get current date
+      id: date
+      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+    - name: setup cache directories
+      run: |
+        mkdir -p ${{ env.CCACHE_DIR }}
+        mkdir -p ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+
+    - name: cache ccache
+      if: ${{ !inputs.no_cache }}
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ccache-${{ runner.os }}-${{ github.run_number }}
+        restore-keys: |
+          ccache-${{ runner.os }}-
+
+    - name: cache vcpkg
+      if: ${{ !inputs.no_cache }}
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+        key: vcpkg-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json') }}
+        restore-keys: |
+          vcpkg-${{ runner.os }}-
+
+    - name: cache vcpkg repo
+      if: ${{ !inputs.no_cache }}
+      uses: actions/cache@v4
+      with:
+        path: ladybird/Build/vcpkg
+        key: vcpkg-repo-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json') }}
+        restore-keys: |
+          vcpkg-repo-${{ runner.os }}-
+
+    - name: install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          autoconf autoconf-archive automake build-essential ccache cmake \
+          curl fonts-liberation2 git libdrm-dev libgl1-mesa-dev libtool \
+          nasm ninja-build pkg-config python3-venv qt6-base-dev \
+          qt6-tools-dev-tools qt6-wayland-dev tar unzip zip libpulse-dev
+
+    - name: install cmake 3.25+
+      run: |
+        wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | sudo tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null
+        echo "deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/kitware.list
+        sudo apt-get update
+        sudo apt-get install -y cmake
+
+    - name: install clang-20
+      run: |
+        sudo wget -O /usr/share/keyrings/llvm-snapshot.gpg.key https://apt.llvm.org/llvm-snapshot.gpg.key
+        echo "deb [signed-by=/usr/share/keyrings/llvm-snapshot.gpg.key] https://apt.llvm.org/$(lsb_release -sc)/ llvm-toolchain-$(lsb_release -sc)-20 main" | sudo tee -a /etc/apt/sources.list.d/llvm.list
+        sudo apt-get update
+        sudo apt-get install -y clang-20 clangd-20 clang-tools-20 lld-20
+
+    - name: configure ccache
+      run: |
+        ccache --set-config=max_size=5G
+        ccache --set-config=compression=true
+        ccache --set-config=compression_level=6
+        ccache -z
+
+    - name: setup git user
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+
+    - name: update submodules
+      run: |
+        git submodule update --remote --recursive
+        git add .
+        git commit -m "auto-update submodules" || echo "no changes"
+
+    - name: push
+      run: git push origin HEAD:master || echo "push failed, continuing anyway"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: build ladybird
+      env:
+        CC: clang-20
+        CXX: clang++-20
+      run: |
+        chmod +x build_ladybird
+        ./build_ladybird
+
+    - name: show ccache stats
+      if: always()
+      run: ccache -s
+
+    - name: get ladybird version info
+      id: version
+      run: |
+        cd ladybird
+        COMMIT_SHORT=$(git rev-parse --short HEAD)
+        echo "commit=$COMMIT_SHORT" >> $GITHUB_OUTPUT
+        echo "version=${{ steps.date.outputs.date }}-$COMMIT_SHORT" >> $GITHUB_OUTPUT
+
+    - name: rename tarball with version
+      run: |
+        cd output
+        mv ladybird-linux-x64.tar.xz ladybird-linux-x64-${{ steps.version.outputs.version }}.tar.xz
+
+    - name: upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ladybird-linux-x64-${{ steps.version.outputs.version }}
+        path: output/ladybird-linux-x64-${{ steps.version.outputs.version }}.tar.xz
+        retention-days: 30
+
+    - name: create release
+      if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: nightly-${{ steps.date.outputs.date }}
+        name: Nightly Build ${{ steps.date.outputs.date }}
+        body: |
+          ladybird ${{ steps.date.outputs.date }} build
+        files: output/ladybird-linux-x64-${{ steps.version.outputs.version }}.tar.xz
+        draft: false
+        prerelease: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

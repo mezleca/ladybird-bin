@@ -1,0 +1,121 @@
+#!/bin/bash
+
+set -e
+
+ROOT_DIR=$(pwd)
+BUILD_DIR="$ROOT_DIR/ladybird/Build"
+RELEASE_DIR="$BUILD_DIR/release"
+OUTPUT_DIR="output"
+TAR_NAME="ladybird-linux-x64.tar.xz"
+INSTALL_DIR="$OUTPUT_DIR/ladybird"
+
+init_submodules() {
+    git submodule update --init --recursive
+}
+
+setup_vcpkg() {
+    local VCPKG_DIR="$BUILD_DIR/vcpkg"
+    local VCPKG_JSON="$ROOT_DIR/ladybird/vcpkg.json"
+    local GIT_REV=$(grep -oP '"builtin-baseline":\s*"\K[^"]+' "$VCPKG_JSON")
+    
+    if [ ! -d "$VCPKG_DIR" ]; then
+        mkdir -p "$BUILD_DIR"
+        cd "$BUILD_DIR"
+        git clone https://github.com/microsoft/vcpkg.git
+        cd "$ROOT_DIR"
+    fi
+    
+    cd "$VCPKG_DIR"
+    local CURRENT_REV=$(git rev-parse HEAD)
+    
+    if [ "$CURRENT_REV" != "$GIT_REV" ]; then
+        git fetch origin
+        git checkout "$GIT_REV"
+        ./bootstrap-vcpkg.sh -disableMetrics
+    fi
+    
+    cd "$ROOT_DIR"
+}
+
+build() {
+    export CC=${CC:-clang}
+    export CXX=${CXX:-clang++}
+    
+    echo "using compiler: $CC / $CXX"
+    which "$CC" "$CXX" || { echo "compiler not found!"; exit 1; }
+    
+    cd ladybird
+    
+    # configure (baseline)
+    cmake --preset Release \
+        -DCMAKE_CXX_COMPILER="$CXX" \
+        -DCMAKE_C_COMPILER="$CC" \
+        -DCMAKE_LINKER=lld \
+        -DCMAKE_CXX_FLAGS="-march=x86-64 -mno-avx -mno-avx2 -mno-avx512f" \
+        -DCMAKE_C_FLAGS="-march=x86-64 -mno-avx -mno-avx2 -mno-avx512f"
+    
+    # build
+    ninja -C "./Build/release" -j $(nproc)
+    
+    cd "$ROOT_DIR"
+}
+
+install_to_staging() {
+    rm -rf "$INSTALL_DIR"
+    mkdir -p "$INSTALL_DIR"
+    
+    DESTDIR="$(pwd)/$INSTALL_DIR" cmake --install "$RELEASE_DIR"
+    
+    if [ -d "$INSTALL_DIR/usr/local" ]; then
+        mv "$INSTALL_DIR/usr/local"/* "$INSTALL_DIR/"
+        rm -rf "$INSTALL_DIR/usr"
+    fi
+}
+
+copy_shared_libs() {
+    local VCPKG_LIB_DIR="$RELEASE_DIR/vcpkg_installed/x64-linux-dynamic/lib"
+    local BUILD_LIB_DIR="$RELEASE_DIR/lib"
+    
+    mkdir -p "$INSTALL_DIR/lib"
+    
+    [ -d "$VCPKG_LIB_DIR" ] && find "$VCPKG_LIB_DIR" -name "*.so*" -exec cp {} "$INSTALL_DIR/lib/" \;
+    [ -d "$BUILD_LIB_DIR" ] && find "$BUILD_LIB_DIR" -name "*.so*" -exec cp {} "$INSTALL_DIR/lib/" \;
+}
+
+cleanup() {
+    find "$INSTALL_DIR" -name '*.a' -delete
+    find "$INSTALL_DIR" -name '*.cmake' -delete
+}
+
+create_launcher() {
+    cat > "$INSTALL_DIR/ladybird" << 'EOF'
+#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export LD_LIBRARY_PATH="$SCRIPT_DIR/lib:$LD_LIBRARY_PATH"
+exec "$SCRIPT_DIR/bin/Ladybird" "$@"
+EOF
+    chmod +x "$INSTALL_DIR/ladybird"
+}
+
+create_tarball() {
+    cd "$OUTPUT_DIR"
+    tar -cJf "$TAR_NAME" ladybird
+    cd "$ROOT_DIR"
+}
+
+main() {
+    if [ ! -d "$BUILD_DIR" ]; then
+        mkdir -p "$BUILD_DIR" 
+    fi
+
+    init_submodules
+    setup_vcpkg
+    build
+    install_to_staging
+    copy_shared_libs
+    cleanup
+    create_launcher
+    create_tarball
+}
+
+main
