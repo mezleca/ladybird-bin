@@ -124,8 +124,8 @@ jobs:
         CC: clang-20
         CXX: clang++-20
       run: |
-        chmod +x build_ladybird
-        ./build_ladybird
+        chmod +x build
+        ./build
 
     - name: show ccache stats
       if: always()
