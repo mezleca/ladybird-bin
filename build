@@ -50,7 +50,7 @@ build() {
     cmake --preset Release \
         -DCMAKE_CXX_COMPILER="$CXX" \
         -DCMAKE_C_COMPILER="$CC" \
-        -DCMAKE_LINKER=lld \
+        -DVCPKG_TARGET_TRIPLET=x64-linux-compat \
         -DCMAKE_CXX_FLAGS="-march=x86-64-v2" \
         -DCMAKE_C_FLAGS="-march=x86-64-v2"
     
