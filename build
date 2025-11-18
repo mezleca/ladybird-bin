@@ -33,6 +33,9 @@ setup_vcpkg() {
         git checkout "$GIT_REV"
         ./bootstrap-vcpkg.sh -disableMetrics
     fi
+
+    # isn't this boostrap job?
+    export VCPKG_ROOT="$VCPKG_DIR"
     
     cd "$ROOT_DIR"
 }
