@@ -34,8 +34,19 @@ setup_vcpkg() {
         ./bootstrap-vcpkg.sh -disableMetrics
     fi
 
-    # isn't this boostrap job?
+    # isn't that boostrap job?
     export VCPKG_ROOT="$VCPKG_DIR"
+
+    touch "$VCPKG_ROOT/triplets/x64-linux-compat.cmake"
+
+cat > "$VCPKG_ROOT/triplets/x64-linux-compat.cmake" << 'EOF'
+set(VCPKG_TARGET_ARCHITECTURE x64)
+set(VCPKG_CRT_LINKAGE dynamic)
+set(VCPKG_LIBRARY_LINKAGE static)
+set(VCPKG_CMAKE_SYSTEM_NAME Linux)
+set(VCPKG_CXX_FLAGS "-march=x86-64-v2")
+set(VCPKG_C_FLAGS "-march=x86-64-v2")
+EOF
     
     cd "$ROOT_DIR"
 }
