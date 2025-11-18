@@ -69,7 +69,7 @@ jobs:
           autoconf autoconf-archive automake build-essential ccache cmake \
           curl fonts-liberation2 git libdrm-dev libgl1-mesa-dev libtool \
           nasm ninja-build pkg-config python3-venv qt6-base-dev \
-          qt6-tools-dev-tools qt6-wayland-dev tar unzip zip libpulse-dev
+          qt6-tools-dev-tools qt6-wayland-dev tar unzip zip libpulse-dev libxcb-xinput-dev libxkbcommon-dev
 
     - name: install cmake 3.25+
       run: |
