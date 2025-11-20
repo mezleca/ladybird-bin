@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       cache_key:
-        description: 'cache key to export'
+        description: 'cache key to export (e.g., ccache-Linux-123)'
         required: true
         type: string
       cache_type:
@@ -61,4 +61,9 @@ jobs:
         echo "cache size: $SIZE"
         echo "SIZE=$SIZE" >> $GITHUB_ENV
 
-    - name: upload cach
+    - name: upload cache as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: cache-${{ inputs.cache_type }}-${{ github.run_number }}
+        path: cache-export.tar.gz
+        retention-days: 7

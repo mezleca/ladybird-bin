@@ -35,27 +35,27 @@ jobs:
         mkdir -p ${{ env.CCACHE_DIR }}
         mkdir -p ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
 
-    - name: cache ccache
+    - name: restore ccache
       if: ${{ !inputs.no_cache }}
-      uses: actions/cache@v4
+      uses: actions/cache/restore@v4
       with:
         path: ${{ env.CCACHE_DIR }}
-        key: ccache-${{ runner.os }}-${{ github.run_number }}
+        key: ccache-${{ runner.os }}-${{ github.sha }}
         restore-keys: |
           ccache-${{ runner.os }}-
 
-    - name: cache vcpkg
+    - name: restore vcpkg
       if: ${{ !inputs.no_cache }}
-      uses: actions/cache@v4
+      uses: actions/cache/restore@v4
       with:
         path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
         key: vcpkg-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json') }}
         restore-keys: |
           vcpkg-${{ runner.os }}-
 
-    - name: cache vcpkg repo
+    - name: restore vcpkg repo
       if: ${{ !inputs.no_cache }}
-      uses: actions/cache@v4
+      uses: actions/cache/restore@v4
       with:
         path: ladybird/Build/vcpkg
         key: vcpkg-repo-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json') }}
@@ -119,6 +119,27 @@ jobs:
     - name: show ccache stats
       if: always()
       run: ccache -s
+
+    - name: save ccache
+      if: ${{ !inputs.no_cache && always() }}
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ env.CCACHE_DIR }}
+        key: ccache-${{ runner.os }}-${{ github.sha }}
+
+    - name: save vcpkg
+      if: ${{ !inputs.no_cache && always() }}
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+        key: vcpkg-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json') }}
+
+    - name: save vcpkg repo
+      if: ${{ !inputs.no_cache && always() }}
+      uses: actions/cache/save@v4
+      with:
+        path: ladybird/Build/vcpkg
+        key: vcpkg-repo-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json') }}
 
     - name: get ladybird version info
       id: version
