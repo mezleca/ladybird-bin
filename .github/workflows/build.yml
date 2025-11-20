@@ -13,7 +13,7 @@ on:
 env:
   BUILD_TYPE: Release
   CCACHE_DIR: ${{ github.workspace }}/.ccache
-  VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
+  VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/ladybird/Build/.vcpkg-binary-cache
 
 jobs:
   build:
@@ -44,14 +44,14 @@ jobs:
         restore-keys: |
           ccache-${{ runner.os }}-
 
-    - name: restore vcpkg
+    - name: restore vcpkg binary cache
       if: ${{ !inputs.no_cache }}
       uses: actions/cache/restore@v4
       with:
         path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-        key: vcpkg-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json') }}
+        key: vcpkg-binary-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json') }}
         restore-keys: |
-          vcpkg-${{ runner.os }}-
+          vcpkg-binary-${{ runner.os }}-
 
     - name: restore vcpkg repo
       if: ${{ !inputs.no_cache }}
@@ -107,7 +107,7 @@ jobs:
       run: git push origin HEAD:master || echo "push failed, continuing anyway"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        
+
     - name: build ladybird
       env:
         CC: clang-20
@@ -127,12 +127,12 @@ jobs:
         path: ${{ env.CCACHE_DIR }}
         key: ccache-${{ runner.os }}-${{ github.sha }}
 
-    - name: save vcpkg
+    - name: save vcpkg binary cache
       if: ${{ !inputs.no_cache && always() }}
       uses: actions/cache/save@v4
       with:
         path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-        key: vcpkg-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json') }}
+        key: vcpkg-binary-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json') }}
 
     - name: save vcpkg repo
       if: ${{ !inputs.no_cache && always() }}
