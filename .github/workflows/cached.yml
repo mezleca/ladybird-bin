@@ -51,15 +51,12 @@ jobs:
 
     - name: create cache archive
       run: |
-        cd $(dirname ${{ env.CACHE_PATH }})
-        tar -czf cache-export.tar.gz $(basename ${{ env.CACHE_PATH }})
-        mv cache-export.tar.gz ${{ github.workspace }}/
+        tar -czf ${{ github.workspace }}/cache-export.tar.gz -C $(dirname ${{ env.CACHE_PATH }}) $(basename ${{ env.CACHE_PATH }})
 
     - name: get cache size
       run: |
         SIZE=$(du -sh ${{ env.CACHE_PATH }} | cut -f1)
         echo "cache size: $SIZE"
-        echo "SIZE=$SIZE" >> $GITHUB_ENV
 
     - name: upload cache as artifact
       uses: actions/upload-artifact@v4
