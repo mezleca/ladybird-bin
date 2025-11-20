@@ -85,13 +85,17 @@ install_to_staging() {
 }
 
 copy_shared_libs() {
-    local VCPKG_LIB_DIR="$RELEASE_DIR/vcpkg_installed/x64-linux-dynamic/lib"
+    local VCPKG_LIB_DIR="$RELEASE_DIR/vcpkg_installed/x64-linux-compat/lib"
     local BUILD_LIB_DIR="$RELEASE_DIR/lib"
-    
     mkdir -p "$INSTALL_DIR/lib"
     
-    [ -d "$VCPKG_LIB_DIR" ] && find "$VCPKG_LIB_DIR" -name "*.so*" -exec cp {} "$INSTALL_DIR/lib/" \;
-    [ -d "$BUILD_LIB_DIR" ] && find "$BUILD_LIB_DIR" -name "*.so*" -exec cp {} "$INSTALL_DIR/lib/" \;
+    if [ -d "$VCPKG_LIB_DIR" ]; then
+        find "$VCPKG_LIB_DIR" -name "*.so*" -exec cp -v {} "$INSTALL_DIR/lib/" \;
+    fi
+    
+    if [ -d "$BUILD_LIB_DIR" ]; then
+        find "$BUILD_LIB_DIR" -name "*.so*" -exec cp -v {} "$INSTALL_DIR/lib/" \;
+    fi
 }
 
 cleanup() {
