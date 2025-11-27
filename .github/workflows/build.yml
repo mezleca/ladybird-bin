@@ -154,13 +154,13 @@ jobs:
     - name: rename tarball with version
       run: |
         cd output
-        mv ladybird-linux-x64.tar.xz ladybird-linux-x64-${{ steps.version.outputs.version }}.tar.xz
+        mv Ladybird-x86_64.AppImage Ladybird-86_64-${{ steps.version.outputs.version }}.AppImage
 
     - name: upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: ladybird-linux-x64-${{ steps.version.outputs.version }}
-        path: output/ladybird-linux-x64-${{ steps.version.outputs.version }}.tar.xz
+        path: output/Ladybird-86_64-${{ steps.version.outputs.version }}.AppImage
         retention-days: 30
 
     - name: create release
@@ -171,7 +171,7 @@ jobs:
         name: Nightly Build ${{ steps.date.outputs.date }}
         body: |
           ladybird ${{ steps.date.outputs.date }} build
-        files: output/ladybird-linux-x64-${{ steps.version.outputs.version }}.tar.xz
+        files: Ladybird-86_64-${{ steps.version.outputs.version }}.AppImage
         draft: false
         prerelease: true
       env:
