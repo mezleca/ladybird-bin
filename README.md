@@ -1,2 +1,2 @@
 ## ladybird nightly builds (linux)
-nothing fancy, just a simple shell script to run ladybird and thats it
+**Warning:** this repo builds upon [ladybird](https://github.com/ladybird-org/ladybird) latest master branch, targeting x86_64-v2 for compatibility.

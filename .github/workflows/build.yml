@@ -44,25 +44,15 @@ jobs:
         restore-keys: |
           ccache-${{ runner.os }}-
 
-    - name: restore vcpkg binary cache
-      id: vcpkg-binary-cache
+    - name: restore global build cache
+      id: global-build-cache
       if: ${{ !inputs.no_cache }}
       uses: actions/cache/restore@v4
       with:
-        path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-        key: vcpkg-binary-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json', 'ladybird/vcpkg-configuration.json', 'ladybird/Meta/CMake/vcpkg/overlay-ports/**') }}
+        path: ladybird/Build
+        key: global-build-${{ runner.os }}-${{ github.run_id }}
         restore-keys: |
-          vcpkg-binary-${{ runner.os }}-
-
-    - name: restore vcpkg repo
-      id: vcpkg-repo-cache
-      if: ${{ !inputs.no_cache }}
-      uses: actions/cache/restore@v4
-      with:
-        path: ladybird/Build/vcpkg
-        key: vcpkg-repo-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json', 'ladybird/vcpkg-configuration.json', 'ladybird/Meta/CMake/vcpkg/overlay-ports/**') }}
-        restore-keys: |
-          vcpkg-repo-${{ runner.os }}-
+          global-build-${{ runner.os }}-
 
     - name: install dependencies
       run: |
@@ -129,19 +119,17 @@ jobs:
         path: ${{ env.CCACHE_DIR }}
         key: ccache-${{ runner.os }}-${{ github.sha }}
 
-    - name: save vcpkg binary cache
-      if: ${{ !inputs.no_cache && always() && steps.vcpkg-binary-cache.outputs.cache-hit != 'true' }}
+    - name: save global build cache
+      if: ${{ !inputs.no_cache && always() }}
       uses: actions/cache/save@v4
       with:
-        path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-        key: vcpkg-binary-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json', 'ladybird/vcpkg-configuration.json', 'ladybird/Meta/CMake/vcpkg/overlay-ports/**') }}
-
-    - name: save vcpkg repo
-      if: ${{ !inputs.no_cache && always() && steps.vcpkg-repo-cache.outputs.cache-hit != 'true' }}
-      uses: actions/cache/save@v4
-      with:
-        path: ladybird/Build/vcpkg
-        key: vcpkg-repo-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json', 'ladybird/vcpkg-configuration.json', 'ladybird/Meta/CMake/vcpkg/overlay-ports/**') }}
+        path: |
+          ladybird/Build
+          !ladybird/Build/release
+          !ladybird/Build/vcpkg/buildtrees
+          !ladybird/Build/vcpkg/packages
+          !ladybird/Build/vcpkg/downloads
+        key: global-build-${{ runner.os }}-${{ github.run_id }}
 
     - name: get ladybird version info
       id: version
@@ -154,13 +142,13 @@ jobs:
     - name: rename tarball with version
       run: |
         cd output
-        mv Ladybird-x86_64.AppImage Ladybird-86_64-${{ steps.version.outputs.version }}.AppImage
+        mv Ladybird-x86_64.AppImage Ladybird-x86_64-${{ steps.version.outputs.version }}.AppImage
 
     - name: upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: ladybird-linux-x64-${{ steps.version.outputs.version }}
-        path: output/Ladybird-86_64-${{ steps.version.outputs.version }}.AppImage
+        path: output/Ladybird-x86_64-${{ steps.version.outputs.version }}.AppImage
         retention-days: 30
 
     - name: create release
@@ -171,7 +159,7 @@ jobs:
         name: Nightly Build ${{ steps.date.outputs.date }}
         body: |
           ladybird ${{ steps.date.outputs.date }} build
-        files: Ladybird-86_64-${{ steps.version.outputs.version }}.AppImage
+        files: output/Ladybird-x86_64-${{ steps.version.outputs.version }}.AppImage
         draft: false
         prerelease: true
       env:

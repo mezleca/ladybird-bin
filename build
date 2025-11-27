@@ -63,6 +63,7 @@ build() {
         -DCMAKE_CXX_COMPILER="$CXX" \
         -DCMAKE_C_COMPILER="$CC" \
         -DVCPKG_TARGET_TRIPLET=x64-linux-compat \
+        -DENABLE_CI_BASELINE_CPU=OFF \
         -DCMAKE_CXX_FLAGS="-march=x86-64-v2" \
         -DCMAKE_C_FLAGS="-march=x86-64-v2"
     
