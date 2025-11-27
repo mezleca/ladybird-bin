@@ -45,20 +45,22 @@ jobs:
           ccache-${{ runner.os }}-
 
     - name: restore vcpkg binary cache
+      id: vcpkg-binary-cache
       if: ${{ !inputs.no_cache }}
       uses: actions/cache/restore@v4
       with:
         path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-        key: vcpkg-binary-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json') }}
+        key: vcpkg-binary-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json', 'ladybird/vcpkg-configuration.json', 'ladybird/Meta/CMake/vcpkg/overlay-ports/**') }}
         restore-keys: |
           vcpkg-binary-${{ runner.os }}-
 
     - name: restore vcpkg repo
+      id: vcpkg-repo-cache
       if: ${{ !inputs.no_cache }}
       uses: actions/cache/restore@v4
       with:
         path: ladybird/Build/vcpkg
-        key: vcpkg-repo-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json') }}
+        key: vcpkg-repo-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json', 'ladybird/vcpkg-configuration.json', 'ladybird/Meta/CMake/vcpkg/overlay-ports/**') }}
         restore-keys: |
           vcpkg-repo-${{ runner.os }}-
 
@@ -128,18 +130,18 @@ jobs:
         key: ccache-${{ runner.os }}-${{ github.sha }}
 
     - name: save vcpkg binary cache
-      if: ${{ !inputs.no_cache && always() }}
+      if: ${{ !inputs.no_cache && always() && steps.vcpkg-binary-cache.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@v4
       with:
         path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-        key: vcpkg-binary-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json') }}
+        key: vcpkg-binary-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json', 'ladybird/vcpkg-configuration.json', 'ladybird/Meta/CMake/vcpkg/overlay-ports/**') }}
 
     - name: save vcpkg repo
-      if: ${{ !inputs.no_cache && always() }}
+      if: ${{ !inputs.no_cache && always() && steps.vcpkg-repo-cache.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@v4
       with:
         path: ladybird/Build/vcpkg
-        key: vcpkg-repo-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json') }}
+        key: vcpkg-repo-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json', 'ladybird/vcpkg-configuration.json', 'ladybird/Meta/CMake/vcpkg/overlay-ports/**') }}
 
     - name: get ladybird version info
       id: version

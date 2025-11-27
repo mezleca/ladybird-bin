@@ -119,6 +119,63 @@ create_tarball() {
     cd "$ROOT_DIR"
 }
 
+create_appimage() {
+    local APPDIR="$OUTPUT_DIR/AppDir"
+    local APPIMAGE_TOOL="$ROOT_DIR/appimagetool-x86_64.AppImage"
+    local APPIMAGE_TOOL_URL="https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+
+    if [ ! -f "$APPIMAGE_TOOL" ]; then
+        echo "downloading appimagetool..."
+        wget -O "$APPIMAGE_TOOL" "$APPIMAGE_TOOL_URL"
+        chmod +x "$APPIMAGE_TOOL"
+    fi
+
+    rm -rf "$APPDIR"
+    mkdir -p "$APPDIR/usr"
+
+    cp -r "$INSTALL_DIR/bin" "$APPDIR/usr/"
+    cp -r "$INSTALL_DIR/lib" "$APPDIR/usr/"
+
+    if [ -d "$INSTALL_DIR/share" ]; then
+        cp -r "$INSTALL_DIR/share" "$APPDIR/usr/"
+    else
+        mkdir -p "$APPDIR/usr/share"
+    fi
+    if [ -d "$INSTALL_DIR/libexec" ]; then
+        cp -r "$INSTALL_DIR/libexec" "$APPDIR/usr/"
+    fi
+
+    cat > "$APPDIR/AppRun" << 'EOF'
+#!/bin/bash
+HERE="$(dirname "$(readlink -f "${0}")")"
+export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
+export PATH="$HERE/usr/bin:$PATH"
+exec "$HERE/usr/bin/Ladybird" "$@"
+EOF
+    chmod +x "$APPDIR/AppRun"
+
+    cat > "$APPDIR/Ladybird.desktop" << 'EOF'
+[Desktop Entry]
+Name=Ladybird
+Exec=Ladybird
+Icon=ladybird
+Type=Application
+Categories=Network;WebBrowser;
+Terminal=false
+EOF
+
+    if [ -f "ladybird/UI/Icons/ladybird.png" ]; then
+        cp "ladybird/UI/Icons/ladybird.png" "$APPDIR/ladybird.png"
+        cp "ladybird/UI/Icons/ladybird.png" "$APPDIR/.DirIcon"
+    else
+        touch "$APPDIR/ladybird.png"
+    fi
+
+    echo "creating AppImage..."
+    ARCH=x86_64 "$APPIMAGE_TOOL" "$APPDIR" "$OUTPUT_DIR/Ladybird-x86_64.AppImage"
+    echo "appImage created at $OUTPUT_DIR/Ladybird-x86_64.AppImage"
+}
+
 main() {
     if [ ! -d "$BUILD_DIR" ]; then
         mkdir -p "$BUILD_DIR" 
@@ -131,7 +188,7 @@ main() {
     copy_shared_libs
     cleanup
     create_launcher
-    create_tarball
+    create_appimage
 }
 
 main
