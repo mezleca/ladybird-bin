@@ -1,0 +1,202 @@
+#!/bin/bash
+
+set -e
+
+ROOT_DIR=$(pwd)
+BUILD_DIR="$ROOT_DIR/ladybird/Build"
+RELEASE_DIR="$BUILD_DIR/release"
+OUTPUT_DIR="output"
+TAR_NAME="ladybird-linux-x64.tar.xz"
+INSTALL_DIR="$OUTPUT_DIR/ladybird"
+
+init_submodules() {
+    git submodule update --init --recursive
+}
+
+setup_vcpkg() {
+    local VCPKG_DIR="$BUILD_DIR/vcpkg"
+    local VCPKG_JSON="$ROOT_DIR/ladybird/vcpkg.json"
+    local GIT_REV=$(grep -oP '"builtin-baseline":\s*"\K[^"]+' "$VCPKG_JSON" || true)
+
+    if [ ! -d "$VCPKG_DIR" ]; then
+        mkdir -p "$BUILD_DIR"
+        cd "$BUILD_DIR"
+        git clone https://github.com/microsoft/vcpkg.git
+        cd "$ROOT_DIR"
+    fi
+
+    cd "$VCPKG_DIR"
+    local CURRENT_REV=$(git rev-parse --short HEAD || echo "")
+
+    if [ -n "$GIT_REV" ] && [ "$CURRENT_REV" != "$GIT_REV" ]; then
+        git fetch origin
+        git checkout "$GIT_REV"
+        ./bootstrap-vcpkg.sh -disableMetrics
+    else
+        if [ ! -x ./vcpkg ]; then
+            ./bootstrap-vcpkg.sh -disableMetrics
+        fi
+    fi
+
+    export VCPKG_ROOT="$VCPKG_DIR"
+
+cat > "$VCPKG_ROOT/triplets/x64-linux-compat.cmake" << 'EOF'
+set(VCPKG_TARGET_ARCHITECTURE x64)
+set(VCPKG_CRT_LINKAGE dynamic)
+set(VCPKG_LIBRARY_LINKAGE dynamic)
+set(VCPKG_CMAKE_SYSTEM_NAME Linux)
+set(VCPKG_CXX_FLAGS "-march=x86-64-v2")
+set(VCPKG_C_FLAGS "-march=x86-64-v2")
+EOF
+
+    cd "$ROOT_DIR"
+}
+
+patch_cmake() {
+    local CMAKE_FILE="ladybird/Meta/CMake/common_compile_options.cmake"
+    if [ -f "$CMAKE_FILE" ]; then
+        sed -i 's/-march=x86-64-v3/-march=x86-64-v2/g' "$CMAKE_FILE"
+        sed -i 's/-march=native/-march=x86-64-v2/g' "$CMAKE_FILE"
+    fi
+}
+
+build() {
+    export CC=${CC:-clang}
+    export CXX=${CXX:-clang++}
+
+    echo "using compiler: $CC / $CXX"
+    which "$CC" "$CXX" || { echo "compiler not found!"; exit 1; }
+
+    cd ladybird
+
+    cmake --preset Release \
+        -DCMAKE_CXX_COMPILER="$CXX" \
+        -DCMAKE_C_COMPILER="$CC" \
+        -DVCPKG_TARGET_TRIPLET=x64-linux-compat \
+        -DCMAKE_CXX_FLAGS="-march=x86-64-v2" \
+        -DCMAKE_C_FLAGS="-march=x86-64-v2"
+
+    ninja -C "./Build/release" -j $(nproc)
+
+    cd "$ROOT_DIR"
+}
+
+install_to_staging() {
+    rm -rf "$INSTALL_DIR"
+    mkdir -p "$INSTALL_DIR"
+
+    DESTDIR="$(pwd)/$INSTALL_DIR" cmake --install "$RELEASE_DIR"
+
+    if [ -d "$INSTALL_DIR/usr/local" ]; then
+        mv "$INSTALL_DIR/usr/local"/* "$INSTALL_DIR/"
+        rm -rf "$INSTALL_DIR/usr"
+    fi
+}
+
+copy_shared_libs() {
+    local VCPKG_LIB_DIR="$RELEASE_DIR/vcpkg_installed/x64-linux-compat/lib"
+    local BUILD_LIB_DIR="$RELEASE_DIR/lib"
+    mkdir -p "$INSTALL_DIR/lib"
+
+    if [ -d "$VCPKG_LIB_DIR" ]; then
+        find "$VCPKG_LIB_DIR" -name "*.so*" -exec cp -v {} "$INSTALL_DIR/lib/" \;
+    fi
+
+    if [ -d "$BUILD_LIB_DIR" ]; then
+        find "$BUILD_LIB_DIR" -name "*.so*" -exec cp -v {} "$INSTALL_DIR/lib/" \;
+    fi
+}
+
+cleanup() {
+    find "$INSTALL_DIR" -name '*.a' -delete
+    find "$INSTALL_DIR" -name '*.cmake' -delete
+}
+
+create_launcher() {
+    cat > "$INSTALL_DIR/ladybird" << 'EOF'
+#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export LD_LIBRARY_PATH="$SCRIPT_DIR/lib:$LD_LIBRARY_PATH"
+exec "$SCRIPT_DIR/bin/Ladybird" "$@"
+EOF
+    chmod +x "$INSTALL_DIR/ladybird"
+}
+
+create_tarball() {
+    cd "$OUTPUT_DIR"
+    tar -cJf "$TAR_NAME" ladybird
+    cd "$ROOT_DIR"
+}
+
+create_appimage() {
+    local APPDIR="$OUTPUT_DIR/AppDir"
+    local APPIMAGE_TOOL="$ROOT_DIR/appimagetool-x86_64.AppImage"
+    local APPIMAGE_TOOL_URL="https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+    local OUTPUT_APPIMAGE="${APPIMAGE_NAME:-Ladybird-x86_64.AppImage}"
+
+    if [ ! -f "$APPIMAGE_TOOL" ]; then
+        wget -O "$APPIMAGE_TOOL" "$APPIMAGE_TOOL_URL"
+        chmod +x "$APPIMAGE_TOOL"
+    fi
+
+    rm -rf "$APPDIR"
+    mkdir -p "$APPDIR/usr"
+
+    cp -r "$INSTALL_DIR/bin" "$APPDIR/usr/"
+    cp -r "$INSTALL_DIR/lib" "$APPDIR/usr/"
+
+    if [ -d "$INSTALL_DIR/share" ]; then
+        cp -r "$INSTALL_DIR/share" "$APPDIR/usr/"
+    else
+        mkdir -p "$APPDIR/usr/share"
+    fi
+    if [ -d "$INSTALL_DIR/libexec" ]; then
+        cp -r "$INSTALL_DIR/libexec" "$APPDIR/usr/"
+    fi
+
+    cat > "$APPDIR/AppRun" << 'EOF'
+#!/bin/bash
+HERE="$(dirname "$(readlink -f "${0}")")"
+export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
+export PATH="$HERE/usr/bin:$PATH"
+exec "$HERE/usr/bin/Ladybird" "$@"
+EOF
+    chmod +x "$APPDIR/AppRun"
+
+    cat > "$APPDIR/Ladybird.desktop" << 'EOF'
+[Desktop Entry]
+Name=Ladybird
+Exec=Ladybird
+Icon=ladybird
+Type=Application
+Categories=Network;WebBrowser;
+Terminal=false
+EOF
+
+    if [ -f "ladybird/UI/Icons/ladybird.png" ]; then
+        cp "ladybird/UI/Icons/ladybird.png" "$APPDIR/ladybird.png"
+        cp "ladybird/UI/Icons/ladybird.png" "$APPDIR/.DirIcon"
+    else
+        touch "$APPDIR/ladybird.png"
+    fi
+
+    ARCH=x86_64 "$APPIMAGE_TOOL" "$APPDIR" "$OUTPUT_DIR/$OUTPUT_APPIMAGE"
+}
+
+main() {
+    if [ ! -d "$BUILD_DIR" ]; then
+        mkdir -p "$BUILD_DIR"
+    fi
+
+    init_submodules
+    patch_cmake
+    setup_vcpkg
+    build
+    install_to_staging
+    copy_shared_libs
+    cleanup
+    create_launcher
+    create_appimage
+}
+
+main

@@ -1,0 +1,3 @@
+[submodule "ladybird"]
+	path = ladybird
+	url = https://github.com/LadybirdBrowser/ladybird/

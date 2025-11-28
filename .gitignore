@@ -1,0 +1,4 @@
+output/
+.ccache/
+appimagetool-x86_64.AppImage
+create_appimage.sh
