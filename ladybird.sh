@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# exit on error
 set -e
 
 ROOT_DIR=$(pwd)
@@ -9,8 +10,40 @@ OUTPUT_DIR="output"
 TAR_NAME="ladybird-linux-x64.tar.xz"
 INSTALL_DIR="$OUTPUT_DIR/ladybird"
 
-init_submodules() {
+# flags
+SETUP=false
+BUILD=false
+CLEAN_BUILD=false
+NO_BUILD=false
+
+# parse arguments
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --setup) SETUP=true ;;
+        --build) BUILD=true ;;
+        --clean-build) CLEAN_BUILD=true ;;
+        --no-build) NO_BUILD=true ;;
+        *) echo "unknown parameter: $1"; exit 1 ;;
+    esac
+    shift
+done
+
+setup_source() {
+    echo "setting up source..."
+    if [ ! -d "ladybird" ]; then
+        echo "cloning ladybird..."
+        git clone https://github.com/LadybirdBrowser/ladybird.git
+    else
+        echo "ladybird directory already exists, updating..."
+        cd ladybird
+        git pull origin master
+        cd "$ROOT_DIR"
+    fi
+
+    echo "initializing submodules within ladybird..."
+    cd ladybird
     git submodule update --init --recursive
+    cd "$ROOT_DIR"
 }
 
 setup_vcpkg() {
@@ -55,12 +88,13 @@ EOF
 patch_cmake() {
     local CMAKE_FILE="ladybird/Meta/CMake/common_compile_options.cmake"
     if [ -f "$CMAKE_FILE" ]; then
+        echo "patching cmake options..."
         sed -i 's/-march=x86-64-v3/-march=x86-64-v2/g' "$CMAKE_FILE"
         sed -i 's/-march=native/-march=x86-64-v2/g' "$CMAKE_FILE"
     fi
 }
 
-build() {
+run_build() {
     export CC=${CC:-clang}
     export CXX=${CXX:-clang++}
 
@@ -107,7 +141,7 @@ copy_shared_libs() {
     fi
 }
 
-cleanup() {
+cleanup_install() {
     find "$INSTALL_DIR" -name '*.a' -delete
     find "$INSTALL_DIR" -name '*.cmake' -delete
 }
@@ -120,12 +154,6 @@ export LD_LIBRARY_PATH="$SCRIPT_DIR/lib:$LD_LIBRARY_PATH"
 exec "$SCRIPT_DIR/bin/Ladybird" "$@"
 EOF
     chmod +x "$INSTALL_DIR/ladybird"
-}
-
-create_tarball() {
-    cd "$OUTPUT_DIR"
-    tar -cJf "$TAR_NAME" ladybird
-    cd "$ROOT_DIR"
 }
 
 create_appimage() {
@@ -184,19 +212,42 @@ EOF
 }
 
 main() {
-    if [ ! -d "$BUILD_DIR" ]; then
-        mkdir -p "$BUILD_DIR"
+    if [ "$SETUP" = true ]; then
+        setup_source
+        if [ "$NO_BUILD" = true ]; then
+            echo "setup complete, skipping build as requested."
+            return
+        fi
     fi
 
-    init_submodules
-    patch_cmake
-    setup_vcpkg
-    build
-    install_to_staging
-    copy_shared_libs
-    cleanup
-    create_launcher
-    create_appimage
+    if [ "$CLEAN_BUILD" = true ]; then
+        echo "cleaning build directory..."
+        rm -rf "ladybird/Build"
+    fi
+
+    if [ "$BUILD" = true ]; then
+        if [ ! -d "ladybird" ]; then
+            echo "error: ladybird directory not found. run with --setup first."
+            exit 1
+        fi
+
+        if [ ! -d "$BUILD_DIR" ]; then
+            mkdir -p "$BUILD_DIR"
+        fi
+
+        patch_cmake
+        setup_vcpkg
+        run_build
+        install_to_staging
+        copy_shared_libs
+        cleanup_install
+        create_launcher
+        create_appimage
+    fi
+
+    if [ "$SETUP" = false ] && [ "$BUILD" = false ] && [ "$CLEAN_BUILD" = false ]; then
+        echo "no action specified. use --setup, --build, or --clean-build."
+    fi
 }
 
 main
