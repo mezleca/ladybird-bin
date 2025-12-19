@@ -30,13 +30,14 @@ done
 
 setup_source() {
     echo "setting up source..."
-    if [ ! -d "ladybird" ]; then
-        echo "cloning ladybird..."
+    if [ ! -d "ladybird/.git" ]; then
+        rm -rf ladybird
         git clone https://github.com/LadybirdBrowser/ladybird.git
     else
         echo "ladybird directory already exists, updating..."
         cd ladybird
-        git pull origin master
+        git checkout master || git checkout main
+        git pull origin master || git pull origin main
         cd "$ROOT_DIR"
     fi
 

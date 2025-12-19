@@ -38,6 +38,11 @@ jobs:
       run: |
         mkdir -p ${{ env.CCACHE_DIR }}
 
+    - name: setup ladybird source
+      run: |
+        chmod +x ladybird.sh
+        ./ladybird.sh --setup --no-build
+
     - name: restore ccache
       if: ${{ !inputs.no_cache }}
       uses: actions/cache@v4
@@ -90,11 +95,6 @@ jobs:
         ccache --set-config=compression=true
         ccache --set-config=compression_level=6
         ccache -z
-
-    - name: setup ladybird source
-      run: |
-        chmod +x ladybird.sh
-        ./ladybird.sh --setup --no-build
 
     - name: build ladybird
       env:
