@@ -37,6 +37,7 @@ jobs:
     - name: setup cache directories
       run: |
         mkdir -p ${{ env.CCACHE_DIR }}
+        mkdir -p ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
 
     - name: setup ladybird source
       run: python3 ladybird.py --setup --no-build

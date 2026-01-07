@@ -71,6 +71,11 @@ class Setup:
         
         os.environ["VCPKG_ROOT"] = str(vcpkg_dir)
         
+        # ensure binary cache directory exists if set
+        vcpkg_cache = os.environ.get("VCPKG_DEFAULT_BINARY_CACHE")
+        if vcpkg_cache:
+            Path(vcpkg_cache).mkdir(parents=True, exist_ok=True)
+        
         triplet_file = vcpkg_dir / "triplets" / "x64-linux-compat.cmake"
         triplet_file.write_text("""set(VCPKG_TARGET_ARCHITECTURE x64)
 set(VCPKG_CRT_LINKAGE dynamic)
@@ -110,17 +115,23 @@ class Build:
                 print(f"compiler not found: {compiler}")
                 sys.exit(1)
         
+        ninja = shutil.which("ninja") or shutil.which("ninja-build")
+        if not ninja:
+            print("error: ninja not found. install ninja-build.")
+            sys.exit(1)
+        
         run([
             "cmake", "--preset", "Release",
             f"-DCMAKE_CXX_COMPILER={cxx}",
             f"-DCMAKE_C_COMPILER={cc}",
+            f"-DCMAKE_MAKE_PROGRAM={ninja}",
             "-DVCPKG_TARGET_TRIPLET=x64-linux-compat",
             "-DCMAKE_CXX_FLAGS=-march=x86-64-v2",
             "-DCMAKE_C_FLAGS=-march=x86-64-v2",
         ], cwd=LADYBIRD_DIR)
         
         nproc = os.cpu_count() or 4
-        run(["ninja", "-C", str(RELEASE_DIR), "-j", str(nproc)])
+        run([ninja, "-C", str(RELEASE_DIR), "-j", str(nproc)])
 
 class Package:
     @staticmethod
