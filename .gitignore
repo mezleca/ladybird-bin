@@ -1,4 +1,5 @@
 output/
 .ccache/
+ladybird/
 appimagetool-x86_64.AppImage
 create_appimage.sh

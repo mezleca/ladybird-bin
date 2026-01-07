@@ -39,9 +39,7 @@ jobs:
         mkdir -p ${{ env.CCACHE_DIR }}
 
     - name: setup ladybird source
-      run: |
-        chmod +x ladybird.sh
-        ./ladybird.sh --setup --no-build
+      run: python3 ladybird.py --setup --no-build
 
     - name: restore ccache
       if: ${{ !inputs.no_cache }}
@@ -59,10 +57,9 @@ jobs:
       with:
         path: |
           ladybird/Build/vcpkg
-          ladybird/Build/vcpkg_installed
-          ladybird/Build/vcpkg/downloads
+          ladybird/Build/release/vcpkg_installed
           ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-        key: vcpkg-${{ runner.os }}-${{ hashFiles('ladybird.sh', 'ladybird/vcpkg.json') }}
+        key: vcpkg-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json', 'ladybird/vcpkg-configuration.json') }}
         restore-keys: |
           vcpkg-${{ runner.os }}-
 
@@ -100,14 +97,12 @@ jobs:
       env:
         CC: clang-20
         CXX: clang++-20
-        VCPKG_CACHE_HIT: ${{ steps.vcpkg-cache.outputs.cache-hit }}
-        APPIMAGE_NAME: Ladybird-x86_64-${{ steps.date.outputs.date }}.AppImage
       run: |
         BUILD_FLAGS="--build"
         if [ "${{ inputs.clean_build }}" = "true" ]; then
           BUILD_FLAGS="$BUILD_FLAGS --clean-build"
         fi
-        ./ladybird.sh $BUILD_FLAGS
+        python3 ladybird.py $BUILD_FLAGS --appimage-name Ladybird-x86_64-${{ steps.date.outputs.date }}.AppImage
 
     - name: show ccache stats
       if: always()
