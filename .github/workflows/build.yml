@@ -126,9 +126,7 @@ jobs:
       uses: actions/upload-artifact@v6
       with:
         name: ladybird-linux-x64-${{ steps.date.outputs.date }}
-        path: |
-            "output/*.AppImage"
-            "output/*.tar.gz"
+        path: output/*
         retention-days: 30
 
     - name: create release
@@ -139,7 +137,7 @@ jobs:
         name: Nightly Build ${{ steps.date.outputs.date }}
         body: |
           ladybird ${{ steps.date.outputs.date }} build
-        files: output/Ladybird-x86_64-${{ steps.date.outputs.date }}.AppImage
+        files: output/*
         draft: false
         prerelease: false
       env:
