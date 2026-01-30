@@ -17,7 +17,7 @@ on:
 env:
   BUILD_TYPE: Release
   CCACHE_DIR: ${{ github.workspace }}/.ccache
-  VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/ladybird/Build/.vcpkg-binary-cache
+  VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-binary-cache
 
 jobs:
   build:
@@ -48,7 +48,7 @@ jobs:
           nasm ninja-build pkg-config python3-venv qt6-base-dev \
           libqt6widgets6 qt6-tools-dev-tools qt6-wayland-dev tar unzip zip libpulse-dev libxcb-xinput-dev libxkbcommon-dev
 
-    - name: install cmake 3.25+
+    - name: install cmake 3.30+
       run: |
         wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | sudo tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null
         echo "deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/kitware.list
