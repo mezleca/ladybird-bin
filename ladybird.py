@@ -238,13 +238,20 @@ def install_to_staging():
         shutil.rmtree(INSTALL_DIR / "usr")
 
 def copy_shared_libs():
-    vcpkg_lib = RELEASE_DIR / "vcpkg_installed" / "x64-linux-compat" / "lib"
+    vcpkg_root = RELEASE_DIR / "vcpkg_installed"
     build_lib = RELEASE_DIR / "lib"
     dest_lib = INSTALL_DIR / "lib"
     dest_lib.mkdir(parents=True, exist_ok=True)
 
+    # find vcpkg lib dirs
+    lib_dirs = [build_lib]
+    if vcpkg_root.exists():
+        for item in vcpkg_root.iterdir():
+            if item.is_dir() and (item / "lib").exists():
+                lib_dirs.append(item / "lib")
+
     # copy all shared libs to lib dir
-    for lib_dir in [vcpkg_lib, build_lib]:
+    for lib_dir in lib_dirs:
         if lib_dir.exists():
             for so in lib_dir.glob("*.so*"):
                 shutil.copy2(so, dest_lib)
