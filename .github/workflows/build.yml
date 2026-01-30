@@ -39,8 +39,31 @@ jobs:
         mkdir -p ${{ env.CCACHE_DIR }}
         mkdir -p ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
 
+    - name: install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          autoconf autoconf-archive automake build-essential ccache cmake \
+          curl fonts-liberation2 git libdrm-dev libgl1-mesa-dev libtool \
+          nasm ninja-build pkg-config python3-venv qt6-base-dev \
+          libqt6widgets6 qt6-tools-dev-tools qt6-wayland-dev tar unzip zip libpulse-dev libxcb-xinput-dev libxkbcommon-dev
+
+    - name: install cmake 3.25+
+      run: |
+        wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | sudo tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null
+        echo "deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/kitware.list
+        sudo apt-get update
+        sudo apt-get install -y cmake
+
+    - name: install clang-20
+      run: |
+        sudo wget -O /usr/share/keyrings/llvm-snapshot.gpg.key https://apt.llvm.org/llvm-snapshot.gpg.key
+        echo "deb [signed-by=/usr/share/keyrings/llvm-snapshot.gpg.key] https://apt.llvm.org/$(lsb_release -sc)/ llvm-toolchain-$(lsb_release -sc)-20 main" | sudo tee -a /etc/apt/sources.list.d/llvm.list
+        sudo apt-get update
+        sudo apt-get install -y clang-20 clangd-20 clang-tools-20 lld-20
+
     - name: setup ladybird source
-      run: python3 ladybird.py --setup --no-build
+      run: python3 ladybird.py setup
 
     - name: restore ccache
       if: ${{ !inputs.no_cache }}
@@ -60,32 +83,9 @@ jobs:
           ladybird/Build/vcpkg
           ladybird/Build/release/vcpkg_installed
           ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-        key: vcpkg-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json', 'ladybird/vcpkg-configuration.json') }}
+        key: vcpkg-${{ runner.os }}-clang20-${{ hashFiles('ladybird/vcpkg.json', 'ladybird/vcpkg-configuration.json') }}
         restore-keys: |
-          vcpkg-${{ runner.os }}-
-
-    - name: install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          autoconf autoconf-archive automake build-essential ccache cmake \
-          curl fonts-liberation2 git libdrm-dev libgl1-mesa-dev libtool \
-          nasm ninja-build pkg-config python3-venv qt6-base-dev \
-          qt6-tools-dev-tools qt6-wayland-dev tar unzip zip libpulse-dev libxcb-xinput-dev libxkbcommon-dev
-
-    - name: install cmake 3.25+
-      run: |
-        wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | sudo tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null
-        echo "deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/kitware.list
-        sudo apt-get update
-        sudo apt-get install -y cmake
-
-    - name: install clang-20
-      run: |
-        sudo wget -O /usr/share/keyrings/llvm-snapshot.gpg.key https://apt.llvm.org/llvm-snapshot.gpg.key
-        echo "deb [signed-by=/usr/share/keyrings/llvm-snapshot.gpg.key] https://apt.llvm.org/$(lsb_release -sc)/ llvm-toolchain-$(lsb_release -sc)-20 main" | sudo tee -a /etc/apt/sources.list.d/llvm.list
-        sudo apt-get update
-        sudo apt-get install -y clang-20 clangd-20 clang-tools-20 lld-20
+          vcpkg-${{ runner.os }}-clang20-
 
     - name: configure ccache
       run: |
@@ -99,11 +99,17 @@ jobs:
         CC: clang-20
         CXX: clang++-20
       run: |
-        BUILD_FLAGS="--build"
+        BUILD_FLAGS=""
         if [ "${{ inputs.clean_build }}" = "true" ]; then
-          BUILD_FLAGS="$BUILD_FLAGS --clean-build"
+          BUILD_FLAGS="--clean"
         fi
-        python3 ladybird.py $BUILD_FLAGS --appimage-name Ladybird-x86_64-${{ steps.date.outputs.date }}.AppImage
+        python3 ladybird.py build $BUILD_FLAGS
+
+    - name: package ladybird (appimage)
+      run: python3 ladybird.py package --type appimage --name Ladybird-${{ steps.date.outputs.date }}
+
+    - name: package ladybird (tarball)
+      run: python3 ladybird.py package --type tarball --name Ladybird-${{ steps.date.outputs.date }}
 
     - name: show ccache stats
       if: always()
@@ -117,10 +123,12 @@ jobs:
         key: ccache-${{ runner.os }}-clang20
 
     - name: upload artifact
-      uses: actions/upload-artifact@v5
+      uses: actions/upload-artifact@v6
       with:
         name: ladybird-linux-x64-${{ steps.date.outputs.date }}
-        path: output/Ladybird-x86_64-${{ steps.date.outputs.date }}.AppImage
+        path: |
+            "output/*.AppImage"
+            "output/*.tar.gz"
         retention-days: 30
 
     - name: create release

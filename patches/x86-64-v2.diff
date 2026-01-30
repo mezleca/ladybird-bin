@@ -1,0 +1,22 @@
+diff --git a/Meta/CMake/common_compile_options.cmake b/Meta/CMake/common_compile_options.cmake
+index 586fd5f9ce..27cb11e2ec 100644
+--- a/Meta/CMake/common_compile_options.cmake
++++ b/Meta/CMake/common_compile_options.cmake
+@@ -56,7 +56,7 @@ if (ENABLE_CI_BASELINE_CPU)
+     elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+         add_cxx_compile_options(-march=armv8.2-a)
+     elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+-        add_cxx_compile_options(-march=x86-64-v3)
++        add_cxx_compile_options(-march=x86-64-v2)
+     endif()
+ elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "riscv64")
+     # On RISC-V the generic -march=native is not yet supported and both gcc and clang require an explicit
+@@ -65,7 +65,7 @@ elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "riscv64")
+     # FIXME: Remove this branch once -march=native is supported.
+ elseif (NOT CMAKE_CROSSCOMPILING)
+     # In all other cases, compile for the native architecture of the host system.
+-    add_cxx_compile_options(-march=native)
++    add_cxx_compile_options(-march=x86-64-v2)
+ endif()
+ 
+ # FIXME: Rework these flags to remove the suspicious ones.

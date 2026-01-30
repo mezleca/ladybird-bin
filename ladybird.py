@@ -6,7 +6,7 @@ import argparse
 import subprocess
 import shutil
 import json
-import re
+
 from pathlib import Path
 from typing import Optional
 
@@ -16,203 +16,299 @@ BUILD_DIR = LADYBIRD_DIR / "Build"
 RELEASE_DIR = BUILD_DIR / "release"
 OUTPUT_DIR = ROOT_DIR / "output"
 INSTALL_DIR = OUTPUT_DIR / "ladybird"
+PATCHES_DIR = ROOT_DIR / "patches"
 
-def run(cmd: list[str], cwd: Optional[Path] = None, env: Optional[dict] = None) -> subprocess.CompletedProcess:
-    merged_env = {**os.environ, **(env or {})}
-    print(f"[run] {' '.join(cmd)}")
-    return subprocess.run(cmd, cwd=cwd, env=merged_env, check=True)
+def run(
+    cmd: str,
+    check: bool = True,
+    env: dict[str, str] | None = None,
+    capture: bool = False,
+    wait: bool = True,
+) -> tuple[int, str]:
+    print(f"exec: {cmd}")
 
-def run_capture(cmd: list[str], cwd: Optional[Path] = None) -> str:
-    result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=True)
-    return result.stdout.strip()
+    if env:
+        env = {**os.environ, **env}
 
-class Setup:
-    @staticmethod
-    def clone_or_update():        
-        if not (LADYBIRD_DIR / ".git").exists():
-            shutil.rmtree(LADYBIRD_DIR, ignore_errors=True)
-            run(["git", "clone", "https://github.com/LadybirdBrowser/ladybird.git"])
+    if wait:
+        result = subprocess.run(
+            cmd,
+            shell=True,
+            env=env,
+            capture_output=capture,
+            text=capture,
+        )
+
+        if check and result.returncode != 0:
+            print(f"command failed with exit code {result.returncode}")
+            sys.exit(result.returncode)
+
+        return result.returncode, result.stdout
+
+    _ = subprocess.Popen(
+        cmd,
+        shell=True,
+        env=env,
+        stdout=subprocess.PIPE if capture else None,
+        stderr=subprocess.PIPE if capture else None,
+        text=capture,
+    )
+
+    return 0, ""
+
+def cmd_setup():
+    clone_or_update()
+    setup_vcpkg()
+
+def clone_or_update():
+    # clone if it doesn't exist
+    if not (LADYBIRD_DIR / ".git").exists():
+        run("git clone https://github.com/LadybirdBrowser/ladybird.git")
+        return
+
+    # otherwise update master
+    try:
+        run(f"git -C {LADYBIRD_DIR} checkout master")
+        run(f"git -C {LADYBIRD_DIR} pull origin master")
+    except SystemExit:
+        print("failed to update master branch")
+        sys.exit(1)
+
+    print("initializing submodules...")
+    run(f"git -C {LADYBIRD_DIR} submodule update --init --recursive")
+
+def setup_vcpkg():
+    vcpkg_dir = BUILD_DIR / "vcpkg"
+    vcpkg_json = LADYBIRD_DIR / "vcpkg.json"
+
+    with open(vcpkg_json) as f:
+        data = json.load(f)
+        git_rev = data.get("builtin-baseline", "")
+
+    # clone vcpkg if missing
+    if not vcpkg_dir.exists():
+        BUILD_DIR.mkdir(parents=True, exist_ok=True)
+        run(f"git -C {BUILD_DIR} clone https://github.com/microsoft/vcpkg.git")
+
+    # check current revision
+    current_rev = ""
+    res, out = run(f"git -C {vcpkg_dir} rev-parse HEAD", capture=True, check=False)
+
+    if res == 0:
+        current_rev = out.strip()
+
+    # update if revision mismatch or if never bootstrapped
+    needs_bootstrap = not (vcpkg_dir / "vcpkg").exists()
+
+    if git_rev and current_rev != git_rev:
+        run(f"git -C {vcpkg_dir} fetch origin")
+        run(f"git -C {vcpkg_dir} checkout {git_rev}")
+        needs_bootstrap = True
+
+    if needs_bootstrap:
+        run(f"chmod +x {vcpkg_dir}/bootstrap-vcpkg.sh")
+        run(f"{vcpkg_dir}/bootstrap-vcpkg.sh -disableMetrics", env={"VCPKG_ROOT": str(vcpkg_dir)})
+
+    os.environ["VCPKG_ROOT"] = str(vcpkg_dir)
+
+    # create cache dir if env var is set
+    if vcpkg_cache := os.environ.get("VCPKG_DEFAULT_BINARY_CACHE"):
+        Path(vcpkg_cache).mkdir(parents=True, exist_ok=True)
+
+def cmd_build(args):
+    if not LADYBIRD_DIR.exists():
+        print("error: ladybird directory not found. run 'setup' first.")
+        sys.exit(1)
+
+    BUILD_DIR.mkdir(parents=True, exist_ok=True)
+    setup_vcpkg()
+
+    if args.clean:
+        clean_build()
+
+    apply_patches()
+
+    cc = args.cc or os.environ.get("CC", "clang")
+    cxx = args.cxx or os.environ.get("CXX", "clang++")
+
+    print(f"using compiler: {cc} / {cxx}")
+
+    if not shutil.which(cc) or not shutil.which(cxx):
+        print(f"error: compiler not found ({cc}/{cxx})")
+        sys.exit(1)
+
+    ninja = shutil.which("ninja") or shutil.which("ninja-build")
+
+    if not ninja:
+        print("error: ninja not found. install ninja-build.")
+        sys.exit(1)
+
+    cmake_cmd = (
+        f"cmake -S . -B Build/release "
+        f"--preset {args.preset} "
+        f"-DCMAKE_CXX_COMPILER={cxx} "
+        f"-DCMAKE_C_COMPILER={cc} "
+        f"-DCMAKE_MAKE_PROGRAM={ninja} "
+        "-DENABLE_CI_BASELINE_CPU=ON " # ladybird_option(ENABLE_CI_BASELINE_CPU OFF CACHE BOOL "Use a baseline CPU target for improved ccache sharing")
+    )
+
+    # run cmake configuration
+    run(f"cd {LADYBIRD_DIR} && {cmake_cmd}")
+
+    # build target
+    jobs = args.jobs or os.cpu_count() or 4
+    try:
+        run(f"{ninja} -C {RELEASE_DIR} -j {jobs}")
+    finally:
+        revert_patches()
+
+def apply_patches():
+    if not PATCHES_DIR.exists():
+        return
+
+    for patch_file in sorted(PATCHES_DIR.glob("*.diff")):
+        print(f"applying patch: {patch_file.name}")
+
+        # check if patch applies cleanly
+        ret_check, _ = run(f"git -C {LADYBIRD_DIR} apply --check {patch_file}", check=False)
+
+        if ret_check == 0:
+            run(f"git -C {LADYBIRD_DIR} apply {patch_file}")
+            continue
+
+        # if check failed, maybe its already applied?
+        # so try reverse check
+        ret_reverse, _ = run(f"git -C {LADYBIRD_DIR} apply --reverse --check {patch_file}", check=False)
+
+        if ret_reverse == 0:
+            print(f"patch {patch_file.name} already applied (skipping)")
         else:
-            try:
-                run(["git", "checkout", "master"], cwd=LADYBIRD_DIR)
-                run(["git", "pull", "origin", "master"], cwd=LADYBIRD_DIR)
-            except subprocess.CalledProcessError:
-                print("failed to update master branch")
-                sys.exit(1)
-                
-        
-        print("initializing submodules...")
-        run(["git", "submodule", "update", "--init", "--recursive"], cwd=LADYBIRD_DIR)
-
-    @staticmethod
-    def setup_vcpkg():
-        vcpkg_dir = BUILD_DIR / "vcpkg"
-        vcpkg_json = LADYBIRD_DIR / "vcpkg.json"
-        
-        with open(vcpkg_json) as f:
-            data = json.load(f)
-            git_rev = data.get("builtin-baseline", "")
-        
-        if not vcpkg_dir.exists():
-            BUILD_DIR.mkdir(parents=True, exist_ok=True)
-            run(["git", "clone", "https://github.com/microsoft/vcpkg.git"], cwd=BUILD_DIR)
-        
-        try:
-            current_rev = run_capture(["git", "rev-parse", "--short", "HEAD"], cwd=vcpkg_dir)
-        except subprocess.CalledProcessError:
-            current_rev = ""
-        
-        if git_rev and current_rev != git_rev[:len(current_rev)]:
-            run(["git", "fetch", "origin"], cwd=vcpkg_dir)
-            run(["git", "checkout", git_rev], cwd=vcpkg_dir)
-            run(["./bootstrap-vcpkg.sh", "-disableMetrics"], cwd=vcpkg_dir)
-        elif not (vcpkg_dir / "vcpkg").exists():
-            run(["./bootstrap-vcpkg.sh", "-disableMetrics"], cwd=vcpkg_dir)
-        
-        os.environ["VCPKG_ROOT"] = str(vcpkg_dir)
-        
-        # ensure binary cache directory exists if set
-        vcpkg_cache = os.environ.get("VCPKG_DEFAULT_BINARY_CACHE")
-        if vcpkg_cache:
-            Path(vcpkg_cache).mkdir(parents=True, exist_ok=True)
-        
-        triplet_file = vcpkg_dir / "triplets" / "x64-linux-compat.cmake"
-        triplet_file.write_text("""set(VCPKG_TARGET_ARCHITECTURE x64)
-set(VCPKG_CRT_LINKAGE dynamic)
-set(VCPKG_LIBRARY_LINKAGE dynamic)
-set(VCPKG_CMAKE_SYSTEM_NAME Linux)
-set(VCPKG_CXX_FLAGS "-march=x86-64-v2")
-set(VCPKG_C_FLAGS "-march=x86-64-v2")
-""")
-
-    @staticmethod
-    def patch_cmake():
-        cmake_file = LADYBIRD_DIR / "Meta" / "CMake" / "common_compile_options.cmake"
-        if not cmake_file.exists():
-            return
-        
-        print("patching cmake options...")
-        content = cmake_file.read_text()
-        content = re.sub(r"-march=x86-64-v3", "-march=x86-64-v2", content)
-        content = re.sub(r"-march=native", "-march=x86-64-v2", content)
-        cmake_file.write_text(content)
-
-class Build:
-    @staticmethod
-    def clean():
-        print("cleaning build directory...")
-        shutil.rmtree(BUILD_DIR, ignore_errors=True)
-
-    @staticmethod
-    def run_build():
-        cc = os.environ.get("CC", "clang")
-        cxx = os.environ.get("CXX", "clang++")
-        
-        print(f"using compiler: {cc} / {cxx}")
-        
-        for compiler in [cc, cxx]:
-            if not shutil.which(compiler):
-                print(f"compiler not found: {compiler}")
-                sys.exit(1)
-        
-        ninja = shutil.which("ninja") or shutil.which("ninja-build")
-        if not ninja:
-            print("error: ninja not found. install ninja-build.")
+            print(f"error: failed to apply patch {patch_file.name}")
             sys.exit(1)
-        
-        run([
-            "cmake", "--preset", "Release",
-            f"-DCMAKE_CXX_COMPILER={cxx}",
-            f"-DCMAKE_C_COMPILER={cc}",
-            f"-DCMAKE_MAKE_PROGRAM={ninja}",
-            "-DVCPKG_TARGET_TRIPLET=x64-linux-compat",
-            "-DCMAKE_CXX_FLAGS=-march=x86-64-v2",
-            "-DCMAKE_C_FLAGS=-march=x86-64-v2",
-        ], cwd=LADYBIRD_DIR)
-        
-        nproc = os.cpu_count() or 4
-        run([ninja, "-C", str(RELEASE_DIR), "-j", str(nproc)])
 
-class Package:
-    @staticmethod
-    def install_to_staging():
-        shutil.rmtree(INSTALL_DIR, ignore_errors=True)
-        INSTALL_DIR.mkdir(parents=True, exist_ok=True)
-        
-        env = {"DESTDIR": str(INSTALL_DIR.absolute())}
-        run(["cmake", "--install", str(RELEASE_DIR)], env=env)
-        
-        usr_local = INSTALL_DIR / "usr" / "local"
-        if usr_local.exists():
-            for item in usr_local.iterdir():
-                shutil.move(str(item), str(INSTALL_DIR / item.name))
-            shutil.rmtree(INSTALL_DIR / "usr")
+def revert_patches():
+    if not PATCHES_DIR.exists():
+        return
 
-    @staticmethod
-    def copy_shared_libs():
-        vcpkg_lib = RELEASE_DIR / "vcpkg_installed" / "x64-linux-compat" / "lib"
-        build_lib = RELEASE_DIR / "lib"
-        dest_lib = INSTALL_DIR / "lib"
-        dest_lib.mkdir(parents=True, exist_ok=True)
-        
-        for lib_dir in [vcpkg_lib, build_lib]:
-            if lib_dir.exists():
-                for so in lib_dir.glob("*.so*"):
-                    shutil.copy2(so, dest_lib)
-                    print(f"copied {so.name}")
+    print("reverting patches...")
+    for patch_file in sorted(PATCHES_DIR.glob("*.diff"), reverse=True):
+        # check if applied
+        ret, _ = run(f"git -C {LADYBIRD_DIR} apply --reverse --check {patch_file}", check=False)
+        if ret == 0:
+            print(f"reverting patch: {patch_file.name}")
+            run(f"git -C {LADYBIRD_DIR} apply --reverse {patch_file}")
 
-    @staticmethod
-    def cleanup():
-        for pattern in ["*.a", "*.cmake"]:
-            for f in INSTALL_DIR.rglob(pattern):
-                f.unlink()
+def clean_build():
+    print("cleaning build directory...")
+    shutil.rmtree(RELEASE_DIR, ignore_errors=True)
 
-    @staticmethod
-    def create_launcher():
-        launcher = INSTALL_DIR / "ladybird"
-        launcher.write_text("""#!/bin/bash
+def cmd_package(args):
+    if not RELEASE_DIR.exists():
+        print("error: build directory not found. run 'build' first.")
+        sys.exit(1)
+
+    install_to_staging()
+    copy_shared_libs()
+    cleanup_staging()
+    create_launcher()
+
+    if args.type == "appimage":
+        create_appimage(args.name)
+    elif args.type == "tarball":
+        create_tarball(args.name)
+    else:
+        print(f"unknown package type: {args.type}")
+        sys.exit(1)
+
+def install_to_staging():
+    # clean staging dir
+    shutil.rmtree(INSTALL_DIR, ignore_errors=True)
+    INSTALL_DIR.mkdir(parents=True, exist_ok=True)
+
+    # install to staging
+    env = {"DESTDIR": str(INSTALL_DIR.absolute())}
+    run(f"cmake --install {RELEASE_DIR}", env=env)
+
+    # move /usr/local content to root of staging
+    usr_local = INSTALL_DIR / "usr" / "local"
+
+    if usr_local.exists():
+        for item in usr_local.iterdir():
+            shutil.move(str(item), str(INSTALL_DIR / item.name))
+        shutil.rmtree(INSTALL_DIR / "usr")
+
+def copy_shared_libs():
+    vcpkg_lib = RELEASE_DIR / "vcpkg_installed" / "x64-linux-compat" / "lib"
+    build_lib = RELEASE_DIR / "lib"
+    dest_lib = INSTALL_DIR / "lib"
+    dest_lib.mkdir(parents=True, exist_ok=True)
+
+    # copy all shared libs to lib dir
+    for lib_dir in [vcpkg_lib, build_lib]:
+        if lib_dir.exists():
+            for so in lib_dir.glob("*.so*"):
+                shutil.copy2(so, dest_lib)
+                print(f"copied {so.name}")
+
+def cleanup_staging():
+    # remove static libs and cmake files
+    for pattern in ["*.a", "*.cmake"]:
+        for f in INSTALL_DIR.rglob(pattern):
+            f.unlink()
+
+def create_launcher():
+    launcher = INSTALL_DIR / "ladybird"
+    launcher.write_text("""#!/bin/bash
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export LD_LIBRARY_PATH="$SCRIPT_DIR/lib:$LD_LIBRARY_PATH"
 exec "$SCRIPT_DIR/bin/Ladybird" "$@"
 """)
-        launcher.chmod(0o755)
+    launcher.chmod(0o755)
 
-    @staticmethod
-    def create_appimage(appimage_name: Optional[str] = None):
-        appdir = OUTPUT_DIR / "AppDir"
-        appimage_tool = ROOT_DIR / "appimagetool-x86_64.AppImage"
-        appimage_url = "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
-        output_name = appimage_name or "Ladybird-x86_64.AppImage"
-        
-        if not appimage_tool.exists():
-            run(["wget", "-O", str(appimage_tool), appimage_url])
-            appimage_tool.chmod(0o755)
-        
-        shutil.rmtree(appdir, ignore_errors=True)
-        (appdir / "usr").mkdir(parents=True)
-        
-        shutil.copytree(INSTALL_DIR / "bin", appdir / "usr" / "bin")
-        shutil.copytree(INSTALL_DIR / "lib", appdir / "usr" / "lib")
-        
-        if (INSTALL_DIR / "share").exists():
-            shutil.copytree(INSTALL_DIR / "share", appdir / "usr" / "share")
-        else:
-            (appdir / "usr" / "share").mkdir()
-        
-        if (INSTALL_DIR / "libexec").exists():
-            shutil.copytree(INSTALL_DIR / "libexec", appdir / "usr" / "libexec")
-        
-        apprun = appdir / "AppRun"
-        apprun.write_text("""#!/bin/bash
+def create_appimage(name: Optional[str] = None):
+    appdir = OUTPUT_DIR / "AppDir"
+    appimage_tool = ROOT_DIR / "appimagetool-x86_64.AppImage"
+    appimage_url = "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+    output_name = name or "Ladybird-x86_64.AppImage"
+
+    # ensure right suffix
+    if not output_name.endswith(".AppImage"):
+        output_name += ".AppImage"
+
+    # download appimagetool if missing
+    if not appimage_tool.exists():
+        run(f"wget -O {appimage_tool} {appimage_url}")
+        run(f"chmod +x {appimage_tool}")
+
+    # prepare AppDir structure
+    shutil.rmtree(appdir, ignore_errors=True)
+    (appdir / "usr").mkdir(parents=True)
+
+    # copy content
+    shutil.copytree(INSTALL_DIR / "bin", appdir / "usr" / "bin")
+    shutil.copytree(INSTALL_DIR / "lib", appdir / "usr" / "lib")
+
+    if (INSTALL_DIR / "share").exists():
+        shutil.copytree(INSTALL_DIR / "share", appdir / "usr" / "share")
+    else:
+        (appdir / "usr" / "share").mkdir()
+
+    if (INSTALL_DIR / "libexec").exists():
+        shutil.copytree(INSTALL_DIR / "libexec", appdir / "usr" / "libexec")
+
+    # create AppRun
+    apprun = appdir / "AppRun"
+    apprun.write_text("""#!/bin/bash
 HERE="$(dirname "$(readlink -f "${0}")")"
 export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
 export PATH="$HERE/usr/bin:$PATH"
 exec "$HERE/usr/bin/Ladybird" "$@"
 """)
-        apprun.chmod(0o755)
-        
-        desktop = appdir / "Ladybird.desktop"
-        desktop.write_text("""[Desktop Entry]
+    apprun.chmod(0o755)
+
+    # create desktop file
+    desktop = appdir / "Ladybird.desktop"
+    desktop.write_text("""[Desktop Entry]
 Name=Ladybird
 Exec=Ladybird
 Icon=ladybird
@@ -220,58 +316,80 @@ Type=Application
 Categories=Network;WebBrowser;
 Terminal=false
 """)
-        
-        icon_src = LADYBIRD_DIR / "UI" / "Icons" / "ladybird.png"
-        if icon_src.exists():
-            shutil.copy2(icon_src, appdir / "ladybird.png")
-            shutil.copy2(icon_src, appdir / ".DirIcon")
-        else:
-            (appdir / "ladybird.png").touch()
-        
-        env = {"ARCH": "x86_64"}
-        run([str(appimage_tool), str(appdir), str(OUTPUT_DIR / output_name)], env=env)
+
+    # copy icon
+    icon_src = LADYBIRD_DIR / "UI" / "Icons" / "ladybird.png"
+
+    if icon_src.exists():
+        shutil.copy2(icon_src, appdir / "ladybird.png")
+        shutil.copy2(icon_src, appdir / ".DirIcon")
+    else:
+        (appdir / "ladybird.png").touch()
+
+    # generate appimage
+    env = {"ARCH": "x86_64"}
+    run(f"{appimage_tool} {appdir} {OUTPUT_DIR / output_name}", env=env)
+
+def create_tarball(name: Optional[str] = None):
+    output_name = name or "ladybird-x86_64"
+
+    # ensure right suffix to avoid conflict with directory
+    if not output_name.endswith(".tar.gz"):
+        output_name += ".tar.gz"
+
+    output_path = OUTPUT_DIR / output_name
+
+    import tarfile
+    with tarfile.open(output_path, "w:gz") as tar:
+        tar.add(INSTALL_DIR, arcname="ladybird")
+
+    print(f"created tarball: {output_path}")
+
+def cmd_all(args):
+    cmd_setup()
+    cmd_build(args)
+    cmd_package(args)
 
 def main():
-    parser = argparse.ArgumentParser(description="Ladybird build script")
-    parser.add_argument("--setup", action="store_true", help="clone/update ladybird source")
-    parser.add_argument("--build", action="store_true", help="build ladybird")
-    parser.add_argument("--package", action="store_true", help="package ladybird (staging + appimage)")
-    parser.add_argument("--clean-build", action="store_true", help="clean build directory before building")
-    parser.add_argument("--no-build", action="store_true", help="skip build after setup")
-    parser.add_argument("--appimage-name", type=str, help="custom appimage output name")
-    
+    parser = argparse.ArgumentParser(description="ladybird build script")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # setup
+    subparsers.add_parser("setup", help="clone/update ladybird source")
+
+    # build
+    build_parser = subparsers.add_parser("build", help="build ladybird")
+    build_parser.add_argument("--cc", help="C compiler")
+    build_parser.add_argument("--cxx", help="C++ compiler")
+    build_parser.add_argument("--jobs", "-j", type=int, help="parallel jobs")
+    build_parser.add_argument("--preset", default="Release", help="cmake preset")
+    build_parser.add_argument("--clean", action="store_true", help="clean before build")
+
+    # package
+    pkg_parser = subparsers.add_parser("package", help="package ladybird")
+    pkg_parser.add_argument("--type", "-t", default="appimage", choices=["appimage", "tarball"], help="package type")
+    pkg_parser.add_argument("--name", "-n", help="output filename")
+
+    # all
+    all_parser = subparsers.add_parser("all", help="setup + build + package")
+    all_parser.add_argument("--cc", help="C compiler")
+    all_parser.add_argument("--cxx", help="C++ compiler")
+    all_parser.add_argument("--jobs", "-j", type=int, help="parallel jobs")
+    all_parser.add_argument("--preset", default="Release", help="cmake preset")
+    all_parser.add_argument("--clean", action="store_true", help="clean before build")
+    all_parser.add_argument("--type", "-t", default="appimage", choices=["appimage", "tarball"], help="package type")
+    all_parser.add_argument("--name", "-n", help="output filename")
+
     args = parser.parse_args()
-    
-    if not any([args.setup, args.build, args.package, args.clean_build]):
-        parser.print_help()
-        print("\nno action specified. use --setup, --build, --package, or --clean-build.")
-        return
-    
-    if args.setup:
-        Setup.clone_or_update()
-        if args.no_build:
-            print("setup complete, skipping build as requested.")
-            return
-    
-    if args.clean_build:
-        Build.clean()
-    
-    if args.build:
-        if not LADYBIRD_DIR.exists():
-            print("error: ladybird directory not found. run with --setup first.")
-            sys.exit(1)
-        
-        BUILD_DIR.mkdir(parents=True, exist_ok=True)
-        Setup.patch_cmake()
-        Setup.setup_vcpkg()
-        Build.run_build()
-    
-    if args.package or args.build:
-        Package.install_to_staging()
-        Package.copy_shared_libs()
-        Package.cleanup()
-        Package.create_launcher()
-        Package.create_appimage(args.appimage_name)
+
+    if args.command == "setup":
+        cmd_setup()
+    elif args.command == "build":
+        cmd_build(args)
+    elif args.command == "package":
+        cmd_package(args)
+    elif args.command == "all":
+        cmd_all(args)
 
 if __name__ == "__main__":
     main()
