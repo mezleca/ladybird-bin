@@ -1,17 +1,17 @@
-diff --git a/Meta/CMake/common_compile_options.cmake b/Meta/CMake/common_compile_options.cmake
-index 52d1300fc2..71f038d942 100644
---- a/Meta/CMake/common_compile_options.cmake
-+++ b/Meta/CMake/common_compile_options.cmake
-@@ -72,7 +72,7 @@ if (ENABLE_CI_BASELINE_CPU)
+diff --git a/Meta/CMake/compile_options.cmake b/Meta/CMake/compile_options.cmake
+index e38f1e924f..c836bcfedf 100644
+--- a/Meta/CMake/compile_options.cmake
++++ b/Meta/CMake/compile_options.cmake
+@@ -54,7 +54,7 @@ if (ENABLE_CI_BASELINE_CPU)
      elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
          add_cxx_compile_options(-march=armv8.2-a)
-     elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+     elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
 -        add_cxx_compile_options(-march=x86-64-v3)
 +        add_cxx_compile_options(-march=x86-64-v2)
      endif()
  elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "riscv64")
      # On RISC-V the generic -march=native is not yet supported and both gcc and clang require an explicit
-@@ -81,7 +81,7 @@ elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "riscv64")
+@@ -63,7 +63,7 @@ elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "riscv64")
      # FIXME: Remove this branch once -march=native is supported.
  elseif (NOT CMAKE_CROSSCOMPILING)
      # In all other cases, compile for the native architecture of the host system.
