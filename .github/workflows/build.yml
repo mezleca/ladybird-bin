@@ -15,7 +15,6 @@ on:
         description: clean build directory before building
 
 env:
-  BUILD_TYPE: Release
   CCACHE_DIR: ${{ github.workspace }}/.ccache
   VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-binary-cache
 
@@ -32,7 +31,9 @@ jobs:
 
     - name: get current date
       id: date
-      run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+      run: |
+        echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+        echo "build_id=$(date +'%Y-%m-%d-%H%M')-${GITHUB_RUN_ID}" >> $GITHUB_OUTPUT
 
     - name: setup cache directories
       run: |
@@ -43,7 +44,7 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y \
-          autoconf autoconf-archive automake build-essential ccache cmake \
+          autoconf autoconf-archive automake build-essential ccache \
           curl fonts-liberation2 git libdrm-dev libgl1-mesa-dev libtool \
           nasm ninja-build pkg-config python3-venv qt6-base-dev \
           libqt6widgets6 qt6-tools-dev-tools qt6-wayland-dev tar unzip zip libpulse-dev libxcb-xinput-dev libxkbcommon-dev
@@ -66,16 +67,17 @@ jobs:
       run: python3 ladybird.py setup
 
     - name: restore ccache
+      id: ccache-restore
       if: ${{ !inputs.no_cache }}
-      uses: actions/cache@v4
+      uses: actions/cache/restore@v4
       with:
         path: ${{ env.CCACHE_DIR }}
-        key: ccache-${{ runner.os }}-clang20-${{ github.sha }}
+        key: ccache-${{ runner.os }}-clang20-${{ github.ref_name }}-${{ github.run_id }}
         restore-keys: |
+          ccache-${{ runner.os }}-clang20-${{ github.ref_name }}-
           ccache-${{ runner.os }}-clang20-
 
     - name: restore vcpkg cache
-      id: vcpkg-cache
       if: ${{ !inputs.no_cache }}
       uses: actions/cache@v4
       with:
@@ -92,12 +94,14 @@ jobs:
         ccache --set-config=max_size=5G
         ccache --set-config=compression=true
         ccache --set-config=compression_level=6
+        ccache --set-config=compiler_check=content
+        ccache --set-config=base_dir=${{ github.workspace }}
+        ccache --set-config=hash_dir=false
         ccache -z
 
     - name: build ladybird
       env:
-        CC: clang-20
-        CXX: clang++-20
+        LADYBIRD_CMAKE_ARGS: --preset Release -DBUILD_TESTING=OFF -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20
       run: |
         BUILD_FLAGS=""
         if [ "${{ inputs.clean_build }}" = "true" ]; then
@@ -106,10 +110,10 @@ jobs:
         python3 ladybird.py build $BUILD_FLAGS
 
     - name: package ladybird (appimage)
-      run: python3 ladybird.py package --type appimage --name Ladybird-${{ steps.date.outputs.date }}
+      run: python3 ladybird.py package --type appimage --name Ladybird-${{ steps.date.outputs.build_id }}
 
     - name: package ladybird (tarball)
-      run: python3 ladybird.py package --type tarball --name Ladybird-${{ steps.date.outputs.date }}
+      run: python3 ladybird.py package --type tarball --name Ladybird-${{ steps.date.outputs.build_id }}
 
     - name: show ccache stats
       if: always()
@@ -117,15 +121,15 @@ jobs:
 
     - name: save ccache
       if: ${{ !inputs.no_cache && always() }}
-      uses: actions/cache@v4
+      uses: actions/cache/save@v4
       with:
         path: ${{ env.CCACHE_DIR }}
-        key: ccache-${{ runner.os }}-clang20
+        key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
 
     - name: upload artifact
       uses: actions/upload-artifact@v6
       with:
-        name: ladybird-linux-x64-${{ steps.date.outputs.date }}
+        name: ladybird-linux-x64-${{ steps.date.outputs.build_id }}
         path: output/*
         retention-days: 30
 
@@ -138,6 +142,7 @@ jobs:
         body: |
           ladybird ${{ steps.date.outputs.date }} build
         files: output/*
+        overwrite_files: false
         draft: false
         prerelease: false
       env:

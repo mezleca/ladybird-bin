@@ -6,6 +6,7 @@ import argparse
 import subprocess
 import shutil
 import json
+import shlex
 
 from pathlib import Path
 from typing import Optional
@@ -128,15 +129,7 @@ def cmd_build(args):
 
     apply_patches()
 
-    cc = args.cc or os.environ.get("CC", "clang")
-    cxx = args.cxx or os.environ.get("CXX", "clang++")
-
-    print(f"using compiler: {cc} / {cxx}")
-
-    if not shutil.which(cc) or not shutil.which(cxx):
-        print(f"error: compiler not found ({cc}/{cxx})")
-        sys.exit(1)
-
+    extra_cmake_args = args.cmake_args or os.environ.get("LADYBIRD_CMAKE_ARGS", "--preset Release")
     ninja = shutil.which("ninja") or shutil.which("ninja-build")
 
     if not ninja:
@@ -145,12 +138,12 @@ def cmd_build(args):
 
     cmake_cmd = (
         f"cmake -S . -B Build/release "
-        f"--preset {args.preset} "
-        f"-DCMAKE_CXX_COMPILER={cxx} "
-        f"-DCMAKE_C_COMPILER={cc} "
         f"-DCMAKE_MAKE_PROGRAM={ninja} "
         "-DENABLE_CI_BASELINE_CPU=ON " # ladybird_option(ENABLE_CI_BASELINE_CPU OFF CACHE BOOL "Use a baseline CPU target for improved ccache sharing")
     )
+
+    if extra_cmake_args:
+        cmake_cmd += " ".join(shlex.quote(arg) for arg in shlex.split(extra_cmake_args)) + " "
 
     # run cmake configuration
     run(f"cd {LADYBIRD_DIR} && {cmake_cmd}")
@@ -366,11 +359,9 @@ def main():
 
     # build
     build_parser = subparsers.add_parser("build", help="build ladybird")
-    build_parser.add_argument("--cc", help="C compiler")
-    build_parser.add_argument("--cxx", help="C++ compiler")
     build_parser.add_argument("--jobs", "-j", type=int, help="parallel jobs")
-    build_parser.add_argument("--preset", default="Release", help="cmake preset")
     build_parser.add_argument("--clean", action="store_true", help="clean before build")
+    build_parser.add_argument("--cmake-args", help="extra args passed to cmake configure")
 
     # package
     pkg_parser = subparsers.add_parser("package", help="package ladybird")
@@ -379,11 +370,9 @@ def main():
 
     # all
     all_parser = subparsers.add_parser("all", help="setup + build + package")
-    all_parser.add_argument("--cc", help="C compiler")
-    all_parser.add_argument("--cxx", help="C++ compiler")
     all_parser.add_argument("--jobs", "-j", type=int, help="parallel jobs")
-    all_parser.add_argument("--preset", default="Release", help="cmake preset")
     all_parser.add_argument("--clean", action="store_true", help="clean before build")
+    all_parser.add_argument("--cmake-args", help="extra args passed to cmake configure")
     all_parser.add_argument("--type", "-t", default="appimage", choices=["appimage", "tarball"], help="package type")
     all_parser.add_argument("--name", "-n", help="output filename")
 
