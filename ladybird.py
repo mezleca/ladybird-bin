@@ -97,14 +97,13 @@ def setup_vcpkg():
         current_rev = out.strip()
 
     if not VCPKG_DIR.exists():
-        run(f"git init {VCPKG_DIR}")
-        run(f"git -C {VCPKG_DIR} remote add origin https://github.com/microsoft/vcpkg.git")
+        run(f"git -C {BUILD_DIR} clone https://github.com/microsoft/vcpkg.git")
 
     needs_bootstrap = not (VCPKG_DIR / "vcpkg").exists()
 
     if git_rev and current_rev != git_rev:
-        run(f"git -C {VCPKG_DIR} fetch --depth 1 origin {git_rev}")
-        run(f"git -C {VCPKG_DIR} checkout --force FETCH_HEAD")
+        run(f"git -C {VCPKG_DIR} fetch origin")
+        run(f"git -C {VCPKG_DIR} checkout {git_rev}")
         needs_bootstrap = True
 
     if needs_bootstrap:
