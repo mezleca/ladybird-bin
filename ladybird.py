@@ -331,7 +331,10 @@ Terminal=false
         (appdir / "ladybird.png").touch()
 
     # generate appimage
-    env = {"ARCH": "x86_64"}
+    env = {
+        "ARCH": "x86_64",
+        "APPIMAGE_EXTRACT_AND_RUN": "1",
+    }
     run(f"{appimage_tool} {appdir} {OUTPUT_DIR / output_name}", env=env)
 
 def create_tarball(name: Optional[str] = None):
