@@ -11,10 +11,12 @@ import shlex
 from pathlib import Path
 from typing import Optional
 
-ROOT_DIR = Path.cwd()
+ROOT_DIR = Path(__file__).resolve().parent
 LADYBIRD_DIR = ROOT_DIR / "ladybird"
 BUILD_DIR = LADYBIRD_DIR / "Build"
 RELEASE_DIR = BUILD_DIR / "release"
+BUILD_CACHE_DIR = BUILD_DIR / "caches"
+VCPKG_DIR = BUILD_DIR / "vcpkg"
 OUTPUT_DIR = ROOT_DIR / "output"
 INSTALL_DIR = OUTPUT_DIR / "ladybird"
 PATCHES_DIR = ROOT_DIR / "patches"
@@ -64,55 +66,58 @@ def cmd_setup():
 def clone_or_update():
     # clone if it doesn't exist
     if not (LADYBIRD_DIR / ".git").exists():
-        run("git clone https://github.com/LadybirdBrowser/ladybird.git")
+        run(
+            "git clone --branch master --single-branch --filter=blob:none --depth 1 "
+            f"https://github.com/LadybirdBrowser/ladybird.git {shlex.quote(str(LADYBIRD_DIR))}"
+        )
         return
 
     # otherwise update master
     try:
         run(f"git -C {LADYBIRD_DIR} checkout master")
-        run(f"git -C {LADYBIRD_DIR} pull origin master")
+        run(f"git -C {LADYBIRD_DIR} pull --ff-only --depth 1 origin master")
     except SystemExit:
         print("failed to update master branch")
         sys.exit(1)
 
-    print("initializing submodules...")
-    run(f"git -C {LADYBIRD_DIR} submodule update --init --recursive")
-
 def setup_vcpkg():
-    vcpkg_dir = BUILD_DIR / "vcpkg"
     vcpkg_json = LADYBIRD_DIR / "vcpkg.json"
 
     with open(vcpkg_json) as f:
         data = json.load(f)
         git_rev = data.get("builtin-baseline", "")
 
-    # clone vcpkg if missing
-    if not vcpkg_dir.exists():
-        BUILD_DIR.mkdir(parents=True, exist_ok=True)
-        run(f"git -C {BUILD_DIR} clone https://github.com/microsoft/vcpkg.git")
+    BUILD_DIR.mkdir(parents=True, exist_ok=True)
+    BUILD_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-    # check current revision
     current_rev = ""
-    res, out = run(f"git -C {vcpkg_dir} rev-parse HEAD", capture=True, check=False)
+    res, out = run(f"git -C {VCPKG_DIR} rev-parse HEAD", capture=True, check=False)
 
     if res == 0:
         current_rev = out.strip()
 
-    # update if revision mismatch or if never bootstrapped
-    needs_bootstrap = not (vcpkg_dir / "vcpkg").exists()
+    if not VCPKG_DIR.exists():
+        run(f"git init {VCPKG_DIR}")
+        run(f"git -C {VCPKG_DIR} remote add origin https://github.com/microsoft/vcpkg.git")
+
+    needs_bootstrap = not (VCPKG_DIR / "vcpkg").exists()
 
     if git_rev and current_rev != git_rev:
-        run(f"git -C {vcpkg_dir} fetch origin")
-        run(f"git -C {vcpkg_dir} checkout {git_rev}")
+        run(f"git -C {VCPKG_DIR} fetch --depth 1 origin {git_rev}")
+        run(f"git -C {VCPKG_DIR} checkout --force FETCH_HEAD")
         needs_bootstrap = True
 
     if needs_bootstrap:
-        run(f"chmod +x {vcpkg_dir}/bootstrap-vcpkg.sh")
-        run(f"{vcpkg_dir}/bootstrap-vcpkg.sh -disableMetrics", env={"VCPKG_ROOT": str(vcpkg_dir)})
+        run(f"chmod +x {VCPKG_DIR}/bootstrap-vcpkg.sh")
+        run(
+            f"{VCPKG_DIR}/bootstrap-vcpkg.sh -disableMetrics",
+            env={"VCPKG_ROOT": str(VCPKG_DIR)},
+        )
 
-    os.environ["VCPKG_ROOT"] = str(vcpkg_dir)
+    os.environ["VCPKG_ROOT"] = str(VCPKG_DIR)
+    os.environ.setdefault("XDG_CACHE_HOME", str(BUILD_CACHE_DIR))
+    os.environ.setdefault("VCPKG_DEFAULT_BINARY_CACHE", str(BUILD_CACHE_DIR / "vcpkg-binary-cache"))
 
-    # create cache dir if env var is set
     if vcpkg_cache := os.environ.get("VCPKG_DEFAULT_BINARY_CACHE"):
         Path(vcpkg_cache).mkdir(parents=True, exist_ok=True)
 

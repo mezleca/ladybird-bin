@@ -14,17 +14,27 @@ on:
         default: false
         description: clean build directory before building
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
+  LADYBIRD_SOURCE_DIR: ${{ github.workspace }}/ladybird
   CCACHE_DIR: ${{ github.workspace }}/.ccache
-  VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-binary-cache
+  VCPKG_ROOT: ${{ github.workspace }}/ladybird/Build/vcpkg
+  XDG_CACHE_HOME: ${{ github.workspace }}/ladybird/Build/caches
+  VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/ladybird/Build/caches/vcpkg-binary-cache
+  CCACHE_COMPILERCHECK: "%compiler% -v"
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/ladybirdbrowser/ladybird-ci:2026.05.4
 
     steps:
     - name: checkout repository
-      uses: actions/checkout@v5
+      uses: actions/checkout@v6.0.2
       with:
         submodules: false
         fetch-depth: 1
@@ -34,34 +44,19 @@ jobs:
       run: |
         echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
         echo "build_id=$(date +'%Y-%m-%d-%H%M')-${GITHUB_RUN_ID}" >> $GITHUB_OUTPUT
+        echo "cache_stamp=$(date -u +'%Y%m%d%H%M_%S')" >> $GITHUB_OUTPUT
 
     - name: setup cache directories
       run: |
         mkdir -p ${{ env.CCACHE_DIR }}
         mkdir -p ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
 
-    - name: install dependencies
+    - name: install missing runtime dependencies
       run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          autoconf autoconf-archive automake build-essential ccache \
-          curl fonts-liberation2 git libdrm-dev libgl1-mesa-dev libtool \
-          nasm ninja-build pkg-config python3-venv qt6-base-dev \
-          libqt6widgets6 qt6-tools-dev-tools qt6-wayland-dev tar unzip zip libpulse-dev libxcb-xinput-dev libxkbcommon-dev
-
-    - name: install cmake 3.30+
-      run: |
-        wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | sudo tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null
-        echo "deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/kitware.list
-        sudo apt-get update
-        sudo apt-get install -y cmake
-
-    - name: install clang-20
-      run: |
-        sudo wget -O /usr/share/keyrings/llvm-snapshot.gpg.key https://apt.llvm.org/llvm-snapshot.gpg.key
-        echo "deb [signed-by=/usr/share/keyrings/llvm-snapshot.gpg.key] https://apt.llvm.org/$(lsb_release -sc)/ llvm-toolchain-$(lsb_release -sc)-20 main" | sudo tee -a /etc/apt/sources.list.d/llvm.list
-        sudo apt-get update
-        sudo apt-get install -y clang-20 clangd-20 clang-tools-20 lld-20
+        apt-get update
+        apt-get install -y --no-install-recommends \
+          libxcb-xinput-dev \
+          qt6-wayland-dev
 
     - name: setup ladybird source
       run: python3 ladybird.py setup
@@ -72,36 +67,34 @@ jobs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ env.CCACHE_DIR }}
-        key: ccache-${{ runner.os }}-clang20-${{ github.ref_name }}-${{ github.run_id }}
+        key: ccache | Linux | x86_64 | Clang | Release | ${{ steps.date.outputs.cache_stamp }}
         restore-keys: |
-          ccache-${{ runner.os }}-clang20-${{ github.ref_name }}-
-          ccache-${{ runner.os }}-clang20-
+          ccache | Linux | x86_64 | Clang | Release
 
     - name: restore vcpkg cache
+      id: vcpkg-restore
       if: ${{ !inputs.no_cache }}
-      uses: actions/cache@v4
+      uses: actions/cache/restore@v4
       with:
-        path: |
-          ladybird/Build/vcpkg
-          ladybird/Build/release/vcpkg_installed
-          ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-        key: vcpkg-${{ runner.os }}-clang20-${{ hashFiles('ladybird/vcpkg.json', 'ladybird/vcpkg-configuration.json') }}
+        path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+        key: vcpkg | Linux | x86_64 | Clang | Release | ${{ hashFiles('ladybird/vcpkg.json') }}
         restore-keys: |
-          vcpkg-${{ runner.os }}-clang20-
+          vcpkg | Linux | x86_64 | Clang | Release
 
     - name: configure ccache
       run: |
-        ccache --set-config=max_size=5G
+        ccache -M 0
         ccache --set-config=compression=true
         ccache --set-config=compression_level=6
-        ccache --set-config=compiler_check=content
         ccache --set-config=base_dir=${{ github.workspace }}
         ccache --set-config=hash_dir=false
+        find "${{ env.CCACHE_DIR }}" -mindepth 1 -print0 | xargs -0r touch -a -m -d "2018-10-10T09:53:07Z"
+        ccache -s
         ccache -z
 
     - name: build ladybird
       env:
-        LADYBIRD_CMAKE_ARGS: --preset Release -DBUILD_TESTING=OFF -DCMAKE_C_COMPILER=clang-20 -DCMAKE_CXX_COMPILER=clang++-20
+        LADYBIRD_CMAKE_ARGS: --preset Release -DBUILD_TESTING=OFF -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
       run: |
         BUILD_FLAGS=""
         if [ "${{ inputs.clean_build }}" = "true" ]; then
@@ -121,10 +114,21 @@ jobs:
 
     - name: save ccache
       if: ${{ !inputs.no_cache && always() }}
+      run: ccache --evict-older-than=1d
+
+    - name: persist ccache
+      if: ${{ !inputs.no_cache && always() }}
       uses: actions/cache/save@v4
       with:
         path: ${{ env.CCACHE_DIR }}
         key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
+
+    - name: persist vcpkg cache
+      if: ${{ !inputs.no_cache && always() }}
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+        key: ${{ steps.vcpkg-restore.outputs.cache-primary-key }}
 
     - name: upload artifact
       uses: actions/upload-artifact@v6
