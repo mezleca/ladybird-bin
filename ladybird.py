@@ -281,7 +281,7 @@ def create_appimage(name: Optional[str] = None):
 
     # download appimagetool if missing
     if not appimage_tool.exists():
-        run(f"wget -O {appimage_tool} {appimage_url}")
+        run(f"curl -L {shlex.quote(appimage_url)} -o {shlex.quote(str(appimage_tool))}")
         run(f"chmod +x {appimage_tool}")
 
     # prepare AppDir structure
