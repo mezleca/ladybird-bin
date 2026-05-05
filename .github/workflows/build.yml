@@ -64,7 +64,7 @@ jobs:
     - name: restore ccache
       id: ccache-restore
       if: ${{ !inputs.no_cache }}
-      uses: actions/cache/restore@v4
+      uses: actions/cache/restore@v5
       with:
         path: ${{ env.CCACHE_DIR }}
         key: ccache | Linux | x86_64 | Clang | Release | ${{ steps.date.outputs.cache_stamp }}
@@ -74,7 +74,7 @@ jobs:
     - name: restore vcpkg cache
       id: vcpkg-restore
       if: ${{ !inputs.no_cache }}
-      uses: actions/cache/restore@v4
+      uses: actions/cache/restore@v5
       with:
         path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
         key: vcpkg | Linux | x86_64 | Clang | Release | ${{ hashFiles('ladybird/vcpkg.json') }}
@@ -93,6 +93,7 @@ jobs:
         ccache -z
 
     - name: build ladybird
+      id: build
       env:
         LADYBIRD_CMAKE_ARGS: --preset Release -DBUILD_TESTING=OFF -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
       run: |
@@ -118,14 +119,14 @@ jobs:
 
     - name: persist ccache
       if: ${{ !inputs.no_cache && always() }}
-      uses: actions/cache/save@v4
+      uses: actions/cache/save@v5
       with:
         path: ${{ env.CCACHE_DIR }}
         key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
 
     - name: persist vcpkg cache
-      if: ${{ !inputs.no_cache && always() }}
-      uses: actions/cache/save@v4
+      if: ${{ !inputs.no_cache && steps.build.outcome == 'success' }}
+      uses: actions/cache/save@v5
       with:
         path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
         key: ${{ steps.vcpkg-restore.outputs.cache-primary-key }}
@@ -139,7 +140,7 @@ jobs:
 
     - name: create release
       if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       with:
         tag_name: nightly-${{ steps.date.outputs.date }}
         name: Nightly Build ${{ steps.date.outputs.date }}
