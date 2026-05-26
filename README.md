@@ -5,7 +5,7 @@
 ### installation
 download the latest night build [here](https://github.com/mezleca/ladybird-bin/releases/latest)
 
-> [!WARN]
+> [!WARNING]
 > appimage / tarball doenst include qt6 by default, so make sure to install either qt6-base-dev (ubuntu) or whatever the name is on arch based distros
 
 ### local build
