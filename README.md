@@ -6,7 +6,8 @@
 download the latest night build [here](https://github.com/mezleca/ladybird-bin/releases/latest)
 
 > [!WARNING]
-> appimage / tarball doenst include qt6 by default, so make sure to install either qt6-base-dev (ubuntu) or whatever the name is on arch based distros
+> appimage / tarball does not include qt6, curl, openssl, or fontconfig by default to prevent weird errors.<br>
+> install the matching runtime packages for your distro before running it.
 
 ### local build
 ```bash

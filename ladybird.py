@@ -20,6 +20,12 @@ VCPKG_DIR = BUILD_DIR / "vcpkg"
 OUTPUT_DIR = ROOT_DIR / "output"
 INSTALL_DIR = OUTPUT_DIR / "ladybird"
 PATCHES_DIR = ROOT_DIR / "patches"
+SYSTEM_RUNTIME_LIB_PREFIXES = (
+    "libcrypto.so",
+    "libcurl.so",
+    "libfontconfig.so",
+    "libssl.so",
+)
 
 def run(
     cmd: str,
@@ -251,8 +257,15 @@ def copy_shared_libs():
     for lib_dir in lib_dirs:
         if lib_dir.exists():
             for so in lib_dir.glob("*.so*"):
+                if should_use_system_runtime_lib(so.name):
+                    print(f"skipped system runtime lib: {so.name}")
+                    continue
+
                 shutil.copy2(so, dest_lib)
                 print(f"copied {so.name}")
+
+def should_use_system_runtime_lib(lib_name: str) -> bool:
+    return any(lib_name.startswith(prefix) for prefix in SYSTEM_RUNTIME_LIB_PREFIXES)
 
 def cleanup_staging():
     # remove static libs and cmake files
