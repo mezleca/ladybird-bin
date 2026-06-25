@@ -5,11 +5,18 @@
 ### installation
 download the latest night build [here](https://github.com/mezleca/ladybird-bin/releases/latest)
 
-> [!WARNING]
-> appimage / tarball doenst include qt6 by default, so make sure to install either qt6-base-dev (ubuntu) or whatever the name is on arch based distros
+### system dependencies
+- openssl
+- curl
+- fontconfig
+- fuse2 (appimage)
 
-### local build
+### how to build locally
+
+install all of the dependencies listed [here](https://github.com/LadybirdBrowser/ladybird/blob/master/Documentation/BuildInstructionsLadybird.md)
+
 ```bash
+# set cmake args (if not present "--preset Release" will be used)
 export LADYBIRD_CMAKE_ARGS="--preset Release -DBUILD_TESTING=OFF -DCMAKE_C_COMPILER=usr/bin/clang -DCMAKE_CXX_COMPILER=/usr/bin/clang++"
 
 ./ladybird.py setup
