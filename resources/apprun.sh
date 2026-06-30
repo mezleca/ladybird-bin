@@ -6,6 +6,9 @@ export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
 export QT_PLUGIN_PATH="$HERE/usr/plugins:$QT_PLUGIN_PATH"
 export PATH="$HERE/usr/bin:$PATH"
 
+echo "[apprun] HERE: $HERE"
+echo "[apprun] QT_PLUGIN_PATH: $QT_PLUGIN_PATH"
+
 readonly HOST_CA_BUNDLE_PATHS=(
     '/etc/ssl/certs/ca-certificates.crt'
     '/etc/pki/tls/certs/ca-bundle.crt'
