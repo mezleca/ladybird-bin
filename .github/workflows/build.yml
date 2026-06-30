@@ -97,7 +97,7 @@ jobs:
       run: sccache --show-stats
 
     - name: persist vcpkg cache
-      if: ${{ !inputs.no_cache && steps.build.outcome == 'success' }}
+      if: ${{ !inputs.no_cache }}
       uses: actions/cache/save@v5
       with:
         path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}

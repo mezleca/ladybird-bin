@@ -167,10 +167,15 @@ def cmd_build(args):
     ]
 
     if IS_CI:
+        sccache_path = shutil.which("sccache")
+
+        if not sccache_path:
+            raise RuntimeError("sccache not found in PATH")
+
         base_cmd += [
-            "-DCMAKE_C_COMPILER_LAUNCHER=sccache",
-            "-DCMAKE_CXX_COMPILER_LAUNCHER=sccache",
-        ]
+            f"-DCMAKE_C_COMPILER_LAUNCHER={sccache_path}",
+            f"-DCMAKE_CXX_COMPILER_LAUNCHER={sccache_path}",
+    ]
 
     cmake_cmd = " ".join(base_cmd)
     if extra_cmake_args:
