@@ -23,6 +23,7 @@ env:
   SCCACHE_GHA_ENABLED: "true"
   VCPKG_ROOT: ${{ github.workspace }}/ladybird/Build/vcpkg
   XDG_CACHE_HOME: ${{ github.workspace }}/ladybird/Build/caches
+  VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/ladybird/Build/caches/vcpkg-binary-cache,readwrite"
   VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/ladybird/Build/caches/vcpkg-binary-cache
   CCACHE_COMPILERCHECK: "%compiler% -v"
 
@@ -67,9 +68,13 @@ jobs:
       uses: actions/cache/restore@v5
       with:
         path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-        key: vcpkg | Linux | x86_64 | Clang | Release | ${{ hashFiles('ladybird/vcpkg.json') }}
+        key: vcpkg-${{ hashFiles('ladybird/vcpkg.json') }}-${{ steps.date.outputs.cache_stamp }}
         restore-keys: |
-          vcpkg | Linux | x86_64 | Clang | Release
+          vcpkg-${{ hashFiles('ladybird/vcpkg.json') }}-
+          vcpkg-
+
+    - name: vcpkg cache debug (before)
+      run: du -sh ${{ env.VCPKG_DEFAULT_BINARY_CACHE }} 2>/dev/null || echo "empty"
 
     - name: build ladybird
       id: build
@@ -86,16 +91,22 @@ jobs:
     - name: package ladybird (tarball)
       run: python3 ladybird.py package --type tarball --name Ladybird-${{ steps.date.outputs.build_id }}
 
-    - name: show sccache stats
-      if: always()
-      run: sccache --show-stats
-
     - name: persist vcpkg cache
-      if: ${{ !inputs.no_cache }}
+      if: ${{ !inputs.no_cache && always() }}
       uses: actions/cache/save@v5
       with:
         path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-        key: ${{ steps.vcpkg-restore.outputs.cache-primary-key }}
+        key: vcpkg-${{ hashFiles('ladybird/vcpkg.json') }}-${{ steps.date.outputs.cache_stamp }}
+
+    - name: vcpkg cache debug (after)
+      if: always()
+      run: |
+        du -sh ${{ env.VCPKG_DEFAULT_BINARY_CACHE }} 2>/dev/null || echo "empty"
+        find ${{ env.VCPKG_DEFAULT_BINARY_CACHE }} -maxdepth 1 | head -20
+
+    - name: show sccache stats
+      if: always()
+      run: sccache --show-stats
 
     - name: upload artifact
       uses: actions/upload-artifact@v6
