@@ -3,7 +3,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 export LD_LIBRARY_PATH="$SCRIPT_DIR/lib:$LD_LIBRARY_PATH"
-export QT_PLUGIN_PATH="$SCRIPT_DIR/plugins:$QT_PLUGIN_PATH"
+export QT_PLUGIN_PATH="$SCRIPT_DIR/plugins"
 
 readonly HOST_CA_BUNDLE_PATHS=(
     '/etc/ssl/certs/ca-certificates.crt'

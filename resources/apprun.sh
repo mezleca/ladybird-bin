@@ -3,7 +3,7 @@
 HERE="$(dirname "$(readlink -f "${0}")")"
 
 export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
-export QT_PLUGIN_PATH="$HERE/usr/plugins:$QT_PLUGIN_PATH"
+export QT_PLUGIN_PATH="$HERE/usr/plugins"
 export PATH="$HERE/usr/bin:$PATH"
 
 echo "[apprun] HERE: $HERE"

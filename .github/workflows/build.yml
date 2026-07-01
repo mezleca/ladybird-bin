@@ -25,6 +25,7 @@ env:
   XDG_CACHE_HOME: ${{ github.workspace }}/ladybird/Build/caches
   VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/ladybird/Build/caches/vcpkg-binary-cache,readwrite"
   VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/ladybird/Build/caches/vcpkg-binary-cache
+  VCPKG_CACHE_ARCHIVE: ${{ github.workspace }}/vcpkg-cache.tar.gz
   CCACHE_COMPILERCHECK: "%compiler% -v"
 
 jobs:
@@ -57,24 +58,37 @@ jobs:
     - name: install missing runtime dependencies
       run: |
         apt-get update
-        apt-get install -y --no-install-recommends libxcb-xinput-dev qt6-wayland-dev
+        apt-get install -y libxcb-xinput-dev qt6-wayland-dev qt6-wayland libxcb-cursor0 libxcb-xinerama0 libxcb-cursor-dev
 
     - name: setup ladybird source
       run: python3 ladybird.py setup
 
-    - name: restore vcpkg cache
+    # restore a single tar.gz instead of letting actions/cache glob the vcpkg
+    # cache tree directly, globbing that tree inside this container job was
+    # producing near empty archives on save, so we archive it ourselves
+    - name: restore vcpkg cache archive
       id: vcpkg-restore
       if: ${{ !inputs.no_cache }}
       uses: actions/cache/restore@v5
       with:
-        path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+        path: ${{ env.VCPKG_CACHE_ARCHIVE }}
         key: vcpkg-${{ hashFiles('ladybird/vcpkg.json') }}-${{ steps.date.outputs.cache_stamp }}
         restore-keys: |
           vcpkg-${{ hashFiles('ladybird/vcpkg.json') }}-
           vcpkg-
 
+    - name: extract vcpkg cache archive
+      if: ${{ !inputs.no_cache && steps.vcpkg-restore.outputs.cache-hit != '' }}
+      run: |
+        if [ -f "${{ env.VCPKG_CACHE_ARCHIVE }}" ]; then
+          mkdir -p ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          tar -xzf ${{ env.VCPKG_CACHE_ARCHIVE }} -C ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+        fi
+
     - name: vcpkg cache debug (before)
-      run: du -sh ${{ env.VCPKG_DEFAULT_BINARY_CACHE }} 2>/dev/null || echo "empty"
+      run: |
+        du -sh ${{ env.VCPKG_DEFAULT_BINARY_CACHE }} 2>/dev/null || echo "empty"
+        find ${{ env.VCPKG_DEFAULT_BINARY_CACHE }} -type f | wc -l
 
     - name: build ladybird
       id: build
@@ -91,18 +105,25 @@ jobs:
     - name: package ladybird (tarball)
       run: python3 ladybird.py package --type tarball --name Ladybird-${{ steps.date.outputs.build_id }}
 
-    - name: persist vcpkg cache
-      if: ${{ !inputs.no_cache && always() }}
-      uses: actions/cache/save@v5
-      with:
-        path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-        key: vcpkg-${{ hashFiles('ladybird/vcpkg.json') }}-${{ steps.date.outputs.cache_stamp }}
-
-    - name: vcpkg cache debug (after)
+    - name: vcpkg cache debug (before 2)
       if: always()
       run: |
         du -sh ${{ env.VCPKG_DEFAULT_BINARY_CACHE }} 2>/dev/null || echo "empty"
-        find ${{ env.VCPKG_DEFAULT_BINARY_CACHE }} -maxdepth 1 | head -20
+        find ${{ env.VCPKG_DEFAULT_BINARY_CACHE }} -type f | wc -l
+
+    - name: tar vcpkg cache
+      if: ${{ !inputs.no_cache && always() }}
+      run: |
+        rm -f ${{ env.VCPKG_CACHE_ARCHIVE }}
+        tar -C ${{ env.VCPKG_DEFAULT_BINARY_CACHE }} -czf ${{ env.VCPKG_CACHE_ARCHIVE }} .
+        ls -lh ${{ env.VCPKG_CACHE_ARCHIVE }}
+
+    - name: persist vcpkg cache
+      if: ${{ !inputs.no_cache && always() }}
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ env.VCPKG_CACHE_ARCHIVE }}
+        key: vcpkg-${{ hashFiles('ladybird/vcpkg.json') }}-${{ steps.date.outputs.cache_stamp }}
 
     - name: show sccache stats
       if: always()
