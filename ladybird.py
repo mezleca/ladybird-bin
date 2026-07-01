@@ -298,11 +298,21 @@ def copy_shared_libs():
     vcpkg_lib = RELEASE_DIR / "vcpkg_installed" / "x64-linux-dynamic" / "lib"
     build_lib  = RELEASE_DIR / "lib"
 
+    copy_qt6_plugins(INSTALL_DIR)
+
     scan_dirs = [INSTALL_DIR / "bin", INSTALL_DIR / "libexec", build_lib, vcpkg_lib]
     binaries: list[Path] = [
         p for d in scan_dirs if d.exists()
         for p in d.iterdir() if p.is_file() and not p.is_symlink()
     ]
+
+    plugins_dir = INSTALL_DIR / "plugins"
+
+    if plugins_dir.exists():
+        binaries += [
+            p for p in plugins_dir.rglob("*.so")
+            if p.is_file() and not p.is_symlink()
+        ]
 
     visited: set[str] = set()
     all_deps: set[Path] = set()
@@ -315,8 +325,6 @@ def copy_shared_libs():
         if not dest.exists():
             shutil.copy2(dep, dest)
             print(f"copied dep: {dep.name}")
-
-    copy_qt6_plugins(INSTALL_DIR)
 
 def copy_qt6_plugins(install_root: Path):
     plugins_dest = install_root / "plugins"
