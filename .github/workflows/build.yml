@@ -64,6 +64,7 @@ jobs:
       uses: jurplel/install-qt-action@v4
       with:
         version: '6.9.*'
+        setup-python: false
 
     - name: setup ladybird source
       run: python3 ladybird.py setup
