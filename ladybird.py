@@ -38,11 +38,6 @@ SYSTEM_LIBS = re.compile(
     r"|libfontconfig\.so|libcurl\.so)"
 )
 
-QT_PLUGIN_DIRS = [
-    Path("/usr/lib/qt6/plugins"),
-    Path("/usr/lib/x86_64-linux-gnu/qt6/plugins"),
-]
-
 QT_PLUGINS = [
     "platforms",
     "xcbglintegrations",
@@ -256,12 +251,40 @@ def install_to_staging():
             shutil.move(str(item), str(INSTALL_DIR / item.name))
         shutil.rmtree(INSTALL_DIR / "usr")
 
+def get_qt_root() -> Path | None:
+    qt_root = os.environ.get("QT_ROOT_DIR") or os.environ.get("Qt6_DIR")
+    return Path(qt_root) if qt_root else None
+
+def get_qt_plugin_dirs() -> list[Path]:
+    dirs: list[Path] = []
+    qt_root = get_qt_root()
+
+    if qt_root:
+        dirs.append(qt_root / "plugins")
+
+    dirs += [
+        Path("/usr/lib/qt6/plugins"),
+        Path("/usr/lib/x86_64-linux-gnu/qt6/plugins"),
+    ]
+
+    return dirs
+
 def collect_deps(binary: Path, visited: set[str]) -> set[Path]:
     env = os.environ.copy()
-    build_lib  = str(RELEASE_DIR / "lib")
-    vcpkg_lib  = str(RELEASE_DIR / "vcpkg_installed" / "x64-linux-dynamic" / "lib")
-    env["LD_LIBRARY_PATH"] = f"{build_lib}:{vcpkg_lib}:{env.get('LD_LIBRARY_PATH', '')}"
+    build_lib = str(RELEASE_DIR / "lib")
+    vcpkg_lib = str(RELEASE_DIR / "vcpkg_installed" / "x64-linux-dynamic" / "lib")
+    qt_root   = get_qt_root()
+    qt_lib    = str(qt_root / "lib") if qt_root else ""
 
+    ld_library_path = [build_lib, vcpkg_lib]
+
+    if qt_lib:
+        ld_library_path.append(qt_lib)
+
+    if existing := env.get("LD_LIBRARY_PATH", ""):
+        ld_library_path.append(existing)
+
+    env["LD_LIBRARY_PATH"] = ":".join(ld_library_path)
     deps: set[Path] = set()
 
     _, out = run(f"ldd {binary}", capture=True, check=False, env=env)
@@ -328,8 +351,9 @@ def copy_shared_libs():
 
 def copy_qt6_plugins(install_root: Path):
     plugins_dest = install_root / "plugins"
+    qt_plugin_dirs = get_qt_plugin_dirs()
 
-    for qt_plugins in QT_PLUGIN_DIRS:
+    for qt_plugins in qt_plugin_dirs:
         if not qt_plugins.exists():
             continue
 

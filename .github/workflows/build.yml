@@ -32,7 +32,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/ladybirdbrowser/ladybird-ci:2026.05.4
+      image: ghcr.io/ladybirdbrowser/ladybird-ci:2026.07.08
 
     steps:
     - name: checkout repository
@@ -58,7 +58,15 @@ jobs:
     - name: install missing runtime dependencies
       run: |
         apt-get update
-        apt-get install -y libxcb-xinput-dev qt6-wayland-dev qt6-wayland libxcb-cursor0 libxcb-xinerama0 libxcb-cursor-dev
+        apt-get install -y sudo libxcb-xinput-dev libxcb-cursor0 libxcb-xinerama0 libxcb-cursor-dev python3 python3-pip python3-venv
+
+    - name: install Qt
+      uses: jurplel/install-qt-action@v4
+      with:
+        version: '6.9.*'
+        setup-python: false
+      env:
+        PIP_BREAK_SYSTEM_PACKAGES: "1"
 
     - name: setup ladybird source
       run: python3 ladybird.py setup
