@@ -32,7 +32,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/ladybirdbrowser/ladybird-ci:2026.05.4
+      image: ghcr.io/ladybirdbrowser/ladybird-ci:2026.07.08
 
     steps:
     - name: checkout repository
@@ -65,6 +65,8 @@ jobs:
       with:
         version: '6.9.*'
         setup-python: false
+      env:
+        PIP_BREAK_SYSTEM_PACKAGES: "1"
 
     - name: setup ladybird source
       run: python3 ladybird.py setup
