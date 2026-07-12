@@ -58,7 +58,7 @@ jobs:
     - name: install missing runtime dependencies
       run: |
         apt-get update
-        apt-get install -y sudo libxcb-xinput-dev libxcb-cursor0 libxcb-xinerama0 libxcb-cursor-dev
+        apt-get install -y sudo libxcb-xinput-dev libxcb-cursor0 libxcb-xinerama0 libxcb-cursor-dev python3 python3-pip python3-venv
 
     - name: install Qt
       uses: jurplel/install-qt-action@v4
