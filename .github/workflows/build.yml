@@ -58,7 +58,12 @@ jobs:
     - name: install missing runtime dependencies
       run: |
         apt-get update
-        apt-get install -y libxcb-xinput-dev qt6-wayland-dev qt6-wayland libxcb-cursor0 libxcb-xinerama0 libxcb-cursor-dev
+        apt-get install -y libxcb-xinput-dev libxcb-cursor0 libxcb-xinerama0 libxcb-cursor-dev
+
+    - name: install Qt
+      uses: jurplel/install-qt-action@v4
+      with:
+        version: '6.9.*'
 
     - name: setup ladybird source
       run: python3 ladybird.py setup
