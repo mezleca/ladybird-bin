@@ -7,7 +7,6 @@ import shlex
 import shutil
 import subprocess
 import sys
-import tarfile
 from pathlib import Path
 
 ROOT_DIR        = Path(__file__).resolve().parent
@@ -211,13 +210,7 @@ def cmd_package(args):
     cleanup_staging()
     create_launcher()
 
-    if args.type == "appimage":
-        create_appimage(args.name)
-    elif args.type == "tarball":
-        create_tarball(args.name)
-    else:
-        print(f"unknown package type: {args.type}")
-        sys.exit(1)
+    create_appimage(args.name)
 
 def install_to_staging():
     shutil.rmtree(INSTALL_DIR, ignore_errors=True)
@@ -449,15 +442,6 @@ def create_appstream_compat_link(appdir: Path):
 
     appdata_file.symlink_to(metainfo_file.name)
 
-def create_tarball(name: str | None = None):
-    output_name = ensure_suffix(name or "ladybird-x86_64", ".tar.gz")
-    output_path = OUTPUT_DIR / output_name
-
-    with tarfile.open(output_path, "w:gz") as tar:
-        tar.add(INSTALL_DIR, arcname="ladybird")
-
-    print(f"created tarball: {output_path}")
-
 def ensure_suffix(name: str, suffix: str) -> str:
     return name if name.endswith(suffix) else f"{name}{suffix}"
 
@@ -481,7 +465,6 @@ def main():
 
     # package
     pkg_parser = subparsers.add_parser("package", help="package ladybird")
-    pkg_parser.add_argument("--type", "-t", default="appimage", choices=["appimage", "tarball"])
     pkg_parser.add_argument("--name", "-n")
 
     # all
@@ -489,7 +472,6 @@ def main():
     all_parser.add_argument("--jobs", "-j", type=int)
     all_parser.add_argument("--clean", action="store_true")
     all_parser.add_argument("--cmake-args")
-    all_parser.add_argument("--type", "-t", default="appimage", choices=["appimage", "tarball"])
     all_parser.add_argument("--name", "-n")
 
     args = parser.parse_args()

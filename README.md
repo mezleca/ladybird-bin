@@ -22,6 +22,5 @@ export LADYBIRD_CMAKE_ARGS="--preset Release -DBUILD_TESTING=OFF -DCMAKE_C_COMPI
 ./ladybird.py setup
 ./ladybird.py build
 
-./ladybird.py package --type appimage
-./ladybird.py package --type tarball
+./ladybird.py package
 ```

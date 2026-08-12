@@ -112,10 +112,7 @@ jobs:
         python3 ladybird.py build $BUILD_FLAGS
 
     - name: package ladybird (appimage)
-      run: python3 ladybird.py package --type appimage --name Ladybird-${{ steps.date.outputs.build_id }}
-
-    - name: package ladybird (tarball)
-      run: python3 ladybird.py package --type tarball --name Ladybird-${{ steps.date.outputs.build_id }}
+      run: python3 ladybird.py package --name Ladybird-${{ steps.date.outputs.build_id }}
 
     - name: vcpkg cache debug (before 2)
       if: always()
