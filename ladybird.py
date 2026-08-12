@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 
+import argparse
+import json
 import os
 import re
-import sys
-import json
 import shlex
 import shutil
-import tarfile
-import argparse
 import subprocess
-
+import sys
+import tarfile
 from pathlib import Path
 
 ROOT_DIR        = Path(__file__).resolve().parent
@@ -62,7 +61,7 @@ def run(
         env = {**os.environ, **env}
 
     if wait:
-        result = subprocess.run(cmd, shell=True, env=env, capture_output=capture, text=capture)
+        result = subprocess.run(cmd, shell=True, check=False, env=env, capture_output=capture, text=capture)
         if check and result.returncode != 0:
             print(f"command failed with exit code {result.returncode}")
             sys.exit(result.returncode)

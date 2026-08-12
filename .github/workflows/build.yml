@@ -32,7 +32,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/ladybirdbrowser/ladybird-ci:2026.07.08
+      image: ghcr.io/ladybirdbrowser/ladybird-ci:2026.07.29
 
     steps:
     - name: checkout repository
