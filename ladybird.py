@@ -34,33 +34,20 @@ def run(
     check: bool = True,
     env: dict[str, str] | None = None,
     capture: bool = False,
-    wait: bool = True,
 ) -> tuple[int, str]:
     print(f"exec: {cmd}")
 
     if env:
         env = {**os.environ, **env}
 
-    if wait:
-        result = subprocess.run(cmd, shell=True, check=False, env=env, capture_output=capture, text=capture)
-        if check and result.returncode != 0:
-            print(f"command failed with exit code {result.returncode}")
-            sys.exit(result.returncode)
-        return result.returncode, result.stdout
-
-    subprocess.Popen(
-        cmd,
-        shell=True,
-        env=env,
-        stdout=subprocess.PIPE if capture else None,
-        stderr=subprocess.PIPE if capture else None,
-        text=capture,
-    )
-    return 0, ""
+    result = subprocess.run(cmd, shell=True, check=False, env=env, capture_output=capture, text=capture)
+    if check and result.returncode != 0:
+        print(f"command failed with exit code {result.returncode}")
+        sys.exit(result.returncode)
+    return result.returncode, result.stdout
 
 def cmd_setup():
     clone_or_update()
-    setup_vcpkg()
 
 def clone_or_update():
     if not (LADYBIRD_DIR / ".git").exists():
@@ -78,6 +65,12 @@ def clone_or_update():
         sys.exit(1)
 
 def setup_vcpkg():
+    if os.environ.get("VCPKG_ROOT"):
+        vcpkg_root = Path(os.environ["VCPKG_ROOT"])
+        if not (vcpkg_root / "vcpkg").exists():
+            raise RuntimeError(f"vcpkg executable not found in {vcpkg_root}")
+        return
+
     vcpkg_json = LADYBIRD_DIR / "vcpkg.json"
 
     with open(vcpkg_json) as f:
@@ -208,7 +201,6 @@ def cmd_package(args):
 
     install_to_staging()
     cleanup_staging()
-    create_launcher()
 
     create_appimage(args.name)
 
@@ -228,11 +220,6 @@ def cleanup_staging():
     for pattern in ["*.a", "*.cmake"]:
         for f in INSTALL_DIR.rglob(pattern):
             f.unlink()
-
-def create_launcher():
-    launcher = INSTALL_DIR / "ladybird"
-    shutil.copy2(RESOURCES_DIR / "launcher.sh", launcher)
-    launcher.chmod(0o755)
 
 def create_appimage(name: str | None = None):
     appdir      = OUTPUT_DIR / "AppDir"
@@ -289,6 +276,7 @@ def create_appimage(name: str | None = None):
         sys.exit(1)
 
     generated[0].replace(output_path)
+    shutil.rmtree(appdir)
 
 def download_linuxdeploy_tools():
     tools = [
@@ -340,17 +328,7 @@ def create_appdir_desktop_file(appdir: Path):
     applications_dir.mkdir(parents=True, exist_ok=True)
 
     desktop_file = applications_dir / APP_DESKTOP_NAME
-    content = desktop_file.read_text() if desktop_file.exists() else (
-        "[Desktop Entry]\n"
-        "Name=Ladybird\n"
-        "Exec=Ladybird %u\n"
-        f"Icon={APP_ID}\n"
-        "Type=Application\n"
-        "Categories=Network;WebBrowser;\n"
-        "Terminal=false\n"
-        "StartupNotify=true\n"
-    )
-    desktop_file.write_text(normalize_desktop_file(content))
+    shutil.copy2(RESOURCES_DIR / APP_DESKTOP_NAME, desktop_file)
 
     root_desktop = appdir / APP_DESKTOP_NAME
 
@@ -358,42 +336,6 @@ def create_appdir_desktop_file(appdir: Path):
         root_desktop.unlink()
 
     root_desktop.symlink_to(Path("usr") / "share" / "applications" / APP_DESKTOP_NAME)
-
-def normalize_desktop_file(contents: str) -> str:
-    replacements = {
-        "Exec": "Ladybird --force-new-process %U",
-        "Icon": APP_ICON_NAME,
-    }
-
-    seen_keys      = set()
-    normalized     = []
-    in_entry       = False
-
-    for line in contents.splitlines():
-        if line.startswith("[") and line.endswith("]"):
-            in_entry = line == "[Desktop Entry]"
-            normalized.append(line)
-            continue
-
-        key = line.split("=", 1)[0]
-        if in_entry and key in replacements:
-            normalized.append(f"{key}={replacements[key]}")
-            seen_keys.add(key)
-            continue
-
-        normalized.append(line)
-
-    insert_at = len(normalized)
-
-    for i, line in enumerate(normalized[1:], start=1):
-        if line.startswith("[") and line.endswith("]"):
-            insert_at = i
-            break
-
-    missing = [f"{k}={v}" for k, v in replacements.items() if k not in seen_keys]
-    normalized[insert_at:insert_at] = missing
-
-    return "\n".join(normalized) + "\n"
 
 def create_appdir_icon_links(appdir: Path):
     icon_path = find_app_icon(appdir)
