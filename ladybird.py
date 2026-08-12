@@ -3,7 +3,6 @@
 import argparse
 import json
 import os
-import re
 import shlex
 import shutil
 import subprocess
@@ -22,31 +21,14 @@ OUTPUT_DIR      = ROOT_DIR / "output"
 INSTALL_DIR     = OUTPUT_DIR / "ladybird"
 PATCHES_DIR     = ROOT_DIR / "patches"
 RESOURCES_DIR   = ROOT_DIR / "resources"
-APPIMAGE_TOOL   = ROOT_DIR / "appimagetool-x86_64.AppImage"
-APPIMAGE_TOOL_URL = "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+LINUXDEPLOY_TOOL = ROOT_DIR / "linuxdeploy-x86_64.AppImage"
+LINUXDEPLOY_TOOL_URL = "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
+LINUXDEPLOY_QT_PLUGIN = ROOT_DIR / "linuxdeploy-plugin-qt-x86_64.AppImage"
+LINUXDEPLOY_QT_PLUGIN_URL = "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage"
 
 APP_ID           = "org.ladybird.Ladybird"
 APP_ICON_NAME    = APP_ID
 APP_DESKTOP_NAME = f"{APP_ID}.desktop"
-
-# libs that must come from the host
-SYSTEM_LIBS = re.compile(
-    r"^(linux-vdso|ld-linux|libc\.so|libm\.so|libdl\.so|libpthread\.so"
-    r"|librt\.so|libresolv\.so|libnss|libutil\.so|libgcc_s\.so"
-    r"|libstdc\+\+\.so|libgomp\.so|libcrypto\.so|libssl\.so"
-    r"|libfontconfig\.so|libcurl\.so)"
-)
-
-QT_PLUGINS = [
-    "platforms",
-    "xcbglintegrations",
-    "wayland-shell-integration",
-    "wayland-decoration-client",
-    "wayland-graphics-integration-client",
-    "imageformats",
-    "iconengines",
-    "tls",
-]
 
 def run(
     cmd: str,
@@ -226,7 +208,6 @@ def cmd_package(args):
         sys.exit(1)
 
     install_to_staging()
-    copy_shared_libs()
     cleanup_staging()
     create_launcher()
 
@@ -250,124 +231,6 @@ def install_to_staging():
             shutil.move(str(item), str(INSTALL_DIR / item.name))
         shutil.rmtree(INSTALL_DIR / "usr")
 
-def get_qt_root() -> Path | None:
-    qt_root = os.environ.get("QT_ROOT_DIR") or os.environ.get("Qt6_DIR")
-    return Path(qt_root) if qt_root else None
-
-def get_qt_plugin_dirs() -> list[Path]:
-    dirs: list[Path] = []
-    qt_root = get_qt_root()
-
-    if qt_root:
-        dirs.append(qt_root / "plugins")
-
-    dirs += [
-        Path("/usr/lib/qt6/plugins"),
-        Path("/usr/lib/x86_64-linux-gnu/qt6/plugins"),
-    ]
-
-    return dirs
-
-def collect_deps(binary: Path, visited: set[str]) -> set[Path]:
-    env = os.environ.copy()
-    build_lib = str(RELEASE_DIR / "lib")
-    vcpkg_lib = str(RELEASE_DIR / "vcpkg_installed" / "x64-linux-dynamic" / "lib")
-    qt_root   = get_qt_root()
-    qt_lib    = str(qt_root / "lib") if qt_root else ""
-
-    ld_library_path = [build_lib, vcpkg_lib]
-
-    if qt_lib:
-        ld_library_path.append(qt_lib)
-
-    if existing := env.get("LD_LIBRARY_PATH", ""):
-        ld_library_path.append(existing)
-
-    env["LD_LIBRARY_PATH"] = ":".join(ld_library_path)
-    deps: set[Path] = set()
-
-    _, out = run(f"ldd {binary}", capture=True, check=False, env=env)
-
-    for line in out.splitlines():
-        parts = line.strip().split()
-
-        if "=>" not in parts or len(parts) < 3:
-            continue
-
-        soname   = parts[0]
-        resolved = parts[2]
-
-        if resolved == "not" or not resolved.startswith("/"):
-            continue
-
-        if SYSTEM_LIBS.match(soname):
-            continue
-
-        if resolved in visited:
-            continue
-
-        visited.add(resolved)
-        path = Path(resolved)
-        deps.add(path)
-        deps.update(collect_deps(path, visited))
-
-    return deps
-
-def copy_shared_libs():
-    dest_lib = INSTALL_DIR / "lib"
-    dest_lib.mkdir(parents=True, exist_ok=True)
-
-    vcpkg_lib = RELEASE_DIR / "vcpkg_installed" / "x64-linux-dynamic" / "lib"
-    build_lib  = RELEASE_DIR / "lib"
-
-    copy_qt6_plugins(INSTALL_DIR)
-
-    scan_dirs = [INSTALL_DIR / "bin", INSTALL_DIR / "libexec", build_lib, vcpkg_lib]
-    binaries: list[Path] = [
-        p for d in scan_dirs if d.exists()
-        for p in d.iterdir() if p.is_file() and not p.is_symlink()
-    ]
-
-    plugins_dir = INSTALL_DIR / "plugins"
-
-    if plugins_dir.exists():
-        binaries += [
-            p for p in plugins_dir.rglob("*.so")
-            if p.is_file() and not p.is_symlink()
-        ]
-
-    visited: set[str] = set()
-    all_deps: set[Path] = set()
-
-    for b in binaries:
-        all_deps.update(collect_deps(b, visited))
-
-    for dep in all_deps:
-        dest = dest_lib / dep.name
-        if not dest.exists():
-            shutil.copy2(dep, dest)
-            print(f"copied dep: {dep.name}")
-
-def copy_qt6_plugins(install_root: Path):
-    plugins_dest = install_root / "plugins"
-    qt_plugin_dirs = get_qt_plugin_dirs()
-
-    for qt_plugins in qt_plugin_dirs:
-        if not qt_plugins.exists():
-            continue
-
-        for name in QT_PLUGINS:
-            src = qt_plugins / name
-            if not src.exists():
-                continue
-            dest = plugins_dest / name
-            if dest.exists():
-                shutil.rmtree(dest)
-            shutil.copytree(src, dest)
-            print(f"copied Qt plugin: {name}")
-
-        break
-
 def cleanup_staging():
     for pattern in ["*.a", "*.cmake"]:
         for f in INSTALL_DIR.rglob(pattern):
@@ -382,12 +245,58 @@ def create_appimage(name: str | None = None):
     appdir      = OUTPUT_DIR / "AppDir"
     output_name = ensure_suffix(name or "Ladybird-x86_64.AppImage", ".AppImage")
 
-    if not APPIMAGE_TOOL.exists():
-        run(f"curl -L {shlex.quote(APPIMAGE_TOOL_URL)} -o {shlex.quote(str(APPIMAGE_TOOL))}")
-        run(f"chmod +x {APPIMAGE_TOOL}")
-
     create_appdir(appdir)
-    run(f"{APPIMAGE_TOOL} {appdir} {OUTPUT_DIR / output_name}", env={"ARCH": "x86_64", "APPIMAGE_EXTRACT_AND_RUN": "1"})
+    download_linuxdeploy_tools()
+
+    desktop_file = appdir / "usr" / "share" / "applications" / APP_DESKTOP_NAME
+    icon_file = find_app_icon(appdir)
+    output_path = OUTPUT_DIR / output_name
+    output_path.unlink(missing_ok=True)
+
+    env = {
+        "APPIMAGE_EXTRACT_AND_RUN": "1",
+        "LD_LIBRARY_PATH": ":".join(
+            path for path in [
+                str(RELEASE_DIR / "lib"),
+                str(RELEASE_DIR / "vcpkg_installed" / "x64-linux-dynamic" / "lib"),
+                os.environ.get("LD_LIBRARY_PATH", ""),
+            ] if path
+        ),
+    }
+
+    if qt_root := os.environ.get("QT_ROOT_DIR"):
+        env["QMAKE"] = str(Path(qt_root) / "bin" / "qmake")
+
+    run(
+        "cd {cwd} && {tool} --appdir AppDir --executable {executable} "
+        "--desktop-file {desktop} --icon-file {icon} --plugin qt --output appimage".format(
+            cwd=shlex.quote(str(OUTPUT_DIR)),
+            tool=shlex.quote(str(LINUXDEPLOY_TOOL)),
+            executable=shlex.quote(str(appdir / "usr/bin/Ladybird")),
+            desktop=shlex.quote(str(desktop_file)),
+            icon=shlex.quote(str(icon_file)),
+        ),
+        env=env,
+    )
+
+    generated = sorted(OUTPUT_DIR.glob("*.AppImage"), key=lambda path: path.stat().st_mtime, reverse=True)
+    generated = [path for path in generated if path != output_path]
+    if not generated:
+        print("error: linuxdeploy did not create an AppImage")
+        sys.exit(1)
+
+    generated[0].replace(output_path)
+
+def download_linuxdeploy_tools():
+    tools = [
+        (LINUXDEPLOY_TOOL, LINUXDEPLOY_TOOL_URL),
+        (LINUXDEPLOY_QT_PLUGIN, LINUXDEPLOY_QT_PLUGIN_URL),
+    ]
+
+    for tool_path, tool_url in tools:
+        if not tool_path.exists():
+            run(f"curl -L {shlex.quote(tool_url)} -o {shlex.quote(str(tool_path))}")
+        tool_path.chmod(0o755)
 
 def create_appdir(appdir: Path):
     shutil.rmtree(appdir, ignore_errors=True)
