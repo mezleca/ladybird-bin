@@ -77,8 +77,13 @@ jobs:
         cache: ${{ !inputs.no_cache }}
         cache-key: vcpkg-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json') }}-${{ steps.vcpkg_baseline.outputs.commit }}
         cache-restore-keys: |
-          vcpkg-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json') }}-
-          vcpkg-${{ runner.os }}-
+          vcpkg-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json') }}-${{ steps.vcpkg_baseline.outputs.commit }}-
+
+    - name: cache vcpkg packages
+      uses: actions/cache@v4
+      with:
+        path: ladybird/Build/caches/vcpkg-binary-cache
+        key: vcpkg-packages-${{ runner.os }}-${{ hashFiles('ladybird/vcpkg.json') }}-${{ steps.vcpkg_baseline.outputs.commit }}-ci-2026.07.29
 
     - name: build ladybird
       run: |
