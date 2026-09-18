@@ -6,6 +6,11 @@ export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
 export QT_PLUGIN_PATH="$HERE/usr/plugins"
 export PATH="$HERE/usr/bin:$PATH"
 
+if [[ ! -r "${FONTCONFIG_FILE:-/etc/fonts/fonts.conf}" ]]; then
+    export FONTCONFIG_FILE="$HERE/usr/share/Lagom/fontconfig.conf"
+    export FONTCONFIG_PATH="$HERE/usr/share/Lagom"
+fi
+
 echo "[apprun] HERE: $HERE"
 echo "[apprun] QT_PLUGIN_PATH: $QT_PLUGIN_PATH"
 

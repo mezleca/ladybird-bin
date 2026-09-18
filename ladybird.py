@@ -116,7 +116,9 @@ def cmd_build(args):
 
     apply_patches()
 
-    extra_cmake_args = args.cmake_args or os.environ.get("LADYBIRD_CMAKE_ARGS", '--preset="Release"')
+    extra_cmake_args = args.cmake_args or os.environ.get(
+        "LADYBIRD_CMAKE_ARGS", '--preset="Release" -DCMAKE_BUILD_TYPE=Release'
+    )
     ninja = shutil.which("ninja") or shutil.which("ninja-build")
 
     if not ninja:
@@ -208,7 +210,7 @@ def install_to_staging():
     shutil.rmtree(INSTALL_DIR, ignore_errors=True)
     INSTALL_DIR.mkdir(parents=True, exist_ok=True)
 
-    run(f"cmake --install {RELEASE_DIR}", env={"DESTDIR": str(INSTALL_DIR.absolute())})
+    run(f"cmake --install {RELEASE_DIR} --strip", env={"DESTDIR": str(INSTALL_DIR.absolute())})
 
     usr_local = INSTALL_DIR / "usr" / "local"
     if usr_local.exists():
@@ -292,6 +294,7 @@ def download_linuxdeploy_tools():
 def create_appdir(appdir: Path):
     shutil.rmtree(appdir, ignore_errors=True)
     copy_appdir_payload(appdir)
+    create_appdir_fontconfig(appdir)
     create_appdir_launcher(appdir)
     create_appdir_desktop_file(appdir)
     create_appdir_icon_links(appdir)
@@ -317,6 +320,11 @@ def copy_appdir_payload(appdir: Path):
     libexec_src = INSTALL_DIR / "libexec"
     if libexec_src.exists():
         shutil.copytree(libexec_src, usr_dir / "libexec")
+
+def create_appdir_fontconfig(appdir: Path):
+    fontconfig_file = appdir / "usr/share/Lagom/fontconfig.conf"
+    fontconfig_file.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(RESOURCES_DIR / "fontconfig.conf", fontconfig_file)
 
 def create_appdir_launcher(appdir: Path):
     apprun = appdir / "AppRun"
