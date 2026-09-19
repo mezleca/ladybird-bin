@@ -322,7 +322,7 @@ def copy_appdir_payload(appdir: Path):
         shutil.copytree(libexec_src, usr_dir / "libexec")
 
 def create_appdir_fontconfig(appdir: Path):
-    fontconfig_file = appdir / "usr/share/Lagom/fontconfig.conf"
+    fontconfig_file = appdir / "usr/share/Lagom/fonts/fontconfig.conf"
     fontconfig_file.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(RESOURCES_DIR / "fontconfig.conf", fontconfig_file)
 

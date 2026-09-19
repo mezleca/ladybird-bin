@@ -2,17 +2,23 @@
 #
 HERE="$(dirname "$(readlink -f "${0}")")"
 
-export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="$HERE/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export QT_PLUGIN_PATH="$HERE/usr/plugins"
-export PATH="$HERE/usr/bin:$PATH"
+export PATH="$HERE/usr/bin${PATH:+:$PATH}"
+export XDG_DATA_DIRS="$HERE/usr/share${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
 
-if [[ ! -r "${FONTCONFIG_FILE:-/etc/fonts/fonts.conf}" ]]; then
-    export FONTCONFIG_FILE="$HERE/usr/share/Lagom/fontconfig.conf"
-    export FONTCONFIG_PATH="$HERE/usr/share/Lagom"
+fontconfig_cache_root="${MESA_SHADER_CACHE_DIR:-${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/Ladybird}"
+export XDG_CACHE_HOME="$fontconfig_cache_root"
+export MESA_SHADER_CACHE_DIR="$fontconfig_cache_root"
+mkdir -p "$fontconfig_cache_root"
+
+export FONTCONFIG_FILE="$HERE/usr/share/Lagom/fonts/fontconfig.conf"
+export FONTCONFIG_PATH="$HERE/usr/share/Lagom/fonts"
+
+qt_platform_theme="${QT_QPA_PLATFORMTHEME:-}"
+if [[ -z "$qt_platform_theme" || ! -r "$HERE/usr/plugins/platformthemes/libq${qt_platform_theme}.so" ]]; then
+    export QT_QPA_PLATFORMTHEME=xdgdesktopportal
 fi
-
-echo "[apprun] HERE: $HERE"
-echo "[apprun] QT_PLUGIN_PATH: $QT_PLUGIN_PATH"
 
 readonly HOST_CA_BUNDLE_PATHS=(
     '/etc/ssl/certs/ca-certificates.crt'
