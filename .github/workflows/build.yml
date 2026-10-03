@@ -51,7 +51,7 @@ jobs:
     - name: install Qt
       uses: jurplel/install-qt-action@v4
       with:
-        version: '6.9.*'
+        version: '6.10.*'
         modules: 'qtpositioning'
       env:
         PIP_BREAK_SYSTEM_PACKAGES: "1"
