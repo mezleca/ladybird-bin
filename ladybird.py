@@ -248,7 +248,7 @@ def create_appimage(name: str | None = None):
 
     if qt_root := os.environ.get("QT_ROOT_DIR"):
         env["QMAKE"] = str(Path(qt_root) / "bin" / "qmake")
-        env["EXTRA_PLATFORM_PLUGINS"] = "libqwayland-egl.so;libqwayland-generic.so"
+        env["EXTRA_PLATFORM_PLUGINS"] = "libqwayland.so"
 
     executables = [appdir / "usr/bin/Ladybird"]
     libexec_dir = appdir / "usr/libexec"
