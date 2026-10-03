@@ -15,8 +15,11 @@ on:
         description: clean build directory before building
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
 
 env:
   LADYBIRD_SOURCE_DIR: ${{ github.workspace }}/ladybird
@@ -106,17 +109,44 @@ jobs:
         path: output/*
         retention-days: 30
 
-    - name: create release
-      if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    - name: update latest tag and remove previous release
+      uses: actions/github-script@v8
+      with:
+        script: |
+          const repo = context.repo;
+          let tagExists = true;
+          try {
+            await github.rest.git.getRef({ ...repo, ref: 'tags/latest' });
+          } catch (error) {
+            if (error.status !== 404) throw error;
+            tagExists = false;
+          }
+
+          if (tagExists) {
+            await github.rest.git.updateRef({ ...repo, ref: 'tags/latest', sha: context.sha, force: true });
+          } else {
+            await github.rest.git.createRef({ ...repo, ref: 'refs/tags/latest', sha: context.sha });
+          }
+
+          let release;
+          try {
+            const response = await github.rest.repos.getReleaseByTag({ ...repo, tag: 'latest' });
+            release = response.data;
+          } catch (error) {
+            if (error.status !== 404) throw error;
+          }
+
+          if (release) {
+            await github.rest.repos.deleteRelease({ ...repo, release_id: release.id });
+          }
+
+    - name: create latest release
       uses: softprops/action-gh-release@v3
       with:
-        tag_name: nightly-${{ steps.date.outputs.date }}
+        tag_name: latest
         name: Nightly Build ${{ steps.date.outputs.date }}
         body: |
           ladybird ${{ steps.date.outputs.date }} build
         files: output/*
-        overwrite_files: false
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        fail_on_unmatched_files: true
+        make_latest: true
