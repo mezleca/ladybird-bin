@@ -1,5 +1,5 @@
 diff --git a/Meta/CMake/compile_options.cmake b/Meta/CMake/compile_options.cmake
-index c431f69f..b91ff69a 100644
+index b0f56cf4b..5ea5984df 100644
 --- a/Meta/CMake/compile_options.cmake
 +++ b/Meta/CMake/compile_options.cmake
 @@ -66,8 +66,8 @@ if (ENABLE_CI_BASELINE_CPU)
@@ -23,4 +23,4 @@ index c431f69f..b91ff69a 100644
 +    set(RUSTC_TARGET_CPU_FLAGS -Ctarget-cpu=x86-64-v2)
  endif()
  
- add_cxx_compile_options(-Wcast-qual)
+ # Stack walks such as the crash handler's follow frame pointers. Apple platforms keep them by default, and Windows
