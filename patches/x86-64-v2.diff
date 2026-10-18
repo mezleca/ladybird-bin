@@ -2,25 +2,17 @@ diff --git a/Meta/CMake/compile_options.cmake b/Meta/CMake/compile_options.cmake
 index b0f56cf4b..5ea5984df 100644
 --- a/Meta/CMake/compile_options.cmake
 +++ b/Meta/CMake/compile_options.cmake
-@@ -66,8 +66,8 @@ if (ENABLE_CI_BASELINE_CPU)
-         add_cxx_compile_options(-march=armv8.2-a)
-         set(RUSTC_TARGET_CPU_FLAGS -Ctarget-feature=+v8.2a)
+@@ -68,4 +68,4 @@ if (ENABLE_CI_BASELINE_CPU)
      elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
 -        add_cxx_compile_options(-march=x86-64-v3)
 -        set(RUSTC_TARGET_CPU_FLAGS -Ctarget-cpu=x86-64-v3)
 +        add_cxx_compile_options(-march=x86-64-v2)
 +        set(RUSTC_TARGET_CPU_FLAGS -Ctarget-cpu=x86-64-v2)
      endif()
- elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "riscv64")
-     # On RISC-V the generic -march=native is not yet supported and both gcc and clang require an explicit
-@@ -76,8 +76,8 @@ elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "riscv64")
-     # FIXME: Remove this branch once -march=native is supported.
- elseif (NOT CMAKE_CROSSCOMPILING)
+@@ -78,4 +78,4 @@ elseif (NOT CMAKE_CROSSCOMPILING)
      # In all other cases, compile for the native architecture of the host system.
 -    add_cxx_compile_options(-march=native)
 -    set(RUSTC_TARGET_CPU_FLAGS -Ctarget-cpu=native)
 +    add_cxx_compile_options(-march=x86-64-v2)
 +    set(RUSTC_TARGET_CPU_FLAGS -Ctarget-cpu=x86-64-v2)
  endif()
- 
- # Stack walks such as the crash handler's follow frame pointers. Apple platforms keep them by default, and Windows
