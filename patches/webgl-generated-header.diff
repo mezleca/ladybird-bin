@@ -1,0 +1,7 @@
+diff --git a/Libraries/LibCompositing/CMakeLists.txt b/Libraries/LibCompositing/CMakeLists.txt
+--- a/Libraries/LibCompositing/CMakeLists.txt
++++ b/Libraries/LibCompositing/CMakeLists.txt
+@@ -80,2 +80,3 @@
+ ladybird_lib(LibCompositing compositing EXPLICIT_SYMBOL_EXPORT)
++add_dependencies(LibCompositing generate_GLFunctions.cpp)
+ target_link_libraries(LibCompositing PUBLIC LibWebCommon)
