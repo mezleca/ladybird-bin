@@ -130,8 +130,8 @@ def cmd_build(args):
         "-B", "Build/release", "-S", ".",
         "-DBUILD_TESTING=OFF",
         "-DENABLE_CI_BASELINE_CPU=ON",
-        '-DCMAKE_C_FLAGS="-O3 -march=x86-64-v2 -ffunction-sections -fdata-sections"',
-        '-DCMAKE_CXX_FLAGS="-O3 -march=x86-64-v2 -ffunction-sections -fdata-sections"',
+        '-DCMAKE_C_FLAGS="-O3 -ffunction-sections -fdata-sections"',
+        '-DCMAKE_CXX_FLAGS="-O3 -ffunction-sections -fdata-sections"',
         '-DCMAKE_EXE_LINKER_FLAGS="-Wl,--gc-sections -Wl,-O1"',
         '-DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections -Wl,-O1"',
     ]
