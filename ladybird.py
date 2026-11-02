@@ -21,9 +21,9 @@ INSTALL_DIR     = OUTPUT_DIR / "ladybird"
 PATCHES_DIR     = ROOT_DIR / "patches"
 RESOURCES_DIR   = ROOT_DIR / "resources"
 LINUXDEPLOY_TOOL = ROOT_DIR / "linuxdeploy-x86_64.AppImage"
-LINUXDEPLOY_TOOL_URL = "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
+LINUXDEPLOY_TOOL_URL = "https://api.github.com/repos/linuxdeploy/linuxdeploy/releases/assets/699514588"
 LINUXDEPLOY_QT_PLUGIN = ROOT_DIR / "linuxdeploy-plugin-qt-x86_64.AppImage"
-LINUXDEPLOY_QT_PLUGIN_URL = "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage"
+LINUXDEPLOY_QT_PLUGIN_URL = "https://api.github.com/repos/linuxdeploy/linuxdeploy-plugin-qt/releases/assets/525032210"
 
 APP_ID           = "org.ladybird.Ladybird"
 APP_ICON_NAME    = APP_ID
@@ -288,7 +288,7 @@ def download_linuxdeploy_tools():
 
     for tool_path, tool_url in tools:
         if not tool_path.exists():
-            run(f"curl -L {shlex.quote(tool_url)} -o {shlex.quote(str(tool_path))}")
+            run(f"curl -fL -H 'Accept: application/octet-stream' {shlex.quote(tool_url)} -o {shlex.quote(str(tool_path))}")
         tool_path.chmod(0o755)
 
 def create_appdir(appdir: Path):
@@ -347,6 +347,8 @@ def create_appdir_desktop_file(appdir: Path):
 
 def create_appdir_icon_links(appdir: Path):
     icon_path = find_app_icon(appdir)
+    icon_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(RESOURCES_DIR / f"{APP_ID}.png", icon_path)
     root_icon = appdir / f"{APP_ICON_NAME}{icon_path.suffix}"
     dir_icon  = appdir / ".DirIcon"
 
@@ -358,27 +360,7 @@ def create_appdir_icon_links(appdir: Path):
     dir_icon.symlink_to(root_icon.name)
 
 def find_app_icon(appdir: Path) -> Path:
-    candidates = (
-        appdir / "usr/share/icons/hicolor/scalable/apps" / f"{APP_ID}.svg",
-        appdir / "usr/share/icons/hicolor/256x256/apps"  / f"{APP_ID}.png",
-        appdir / "usr/share/icons/hicolor/128x128/apps"  / f"{APP_ID}.png",
-    )
-
-    for icon in candidates:
-        if icon.exists():
-            return icon
-
-    fallback = appdir / "usr/share/icons/hicolor/256x256/apps" / f"{APP_ID}.png"
-    fallback.parent.mkdir(parents=True, exist_ok=True)
-
-    icon_src = LADYBIRD_DIR / "UI" / "Icons" / "ladybird.png"
-
-    if icon_src.exists():
-        shutil.copy2(icon_src, fallback)
-    else:
-        fallback.touch()
-
-    return fallback
+    return appdir / "usr/share/icons/hicolor/256x256/apps" / f"{APP_ID}.png"
 
 def create_appstream_compat_link(appdir: Path):
     metainfo_dir  = appdir / "usr/share/metainfo"
